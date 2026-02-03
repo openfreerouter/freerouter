@@ -21,7 +21,8 @@ BlockRun gives OpenClaw operators one wallet for 30+ models with automatic cost 
 # Install the provider plugin
 openclaw plugin install @blockrun/openclaw
 
-# Set your wallet key
+# That's it — plugin auto-generates a wallet on first run
+# Or bring your own:
 export BLOCKRUN_WALLET_KEY=0x...
 
 # Set your model (or let smart routing choose)
@@ -97,17 +98,38 @@ Operators can also pin a specific model (`openclaw config set model openai/gpt-4
 
 No account needed. Payment IS authentication via [x402](https://www.x402.org/).
 
-Your wallet signs a USDC micropayment on Base for each API call. The plugin handles the payment dance transparently:
+### Auto-Generated Wallet
+
+On first run, the plugin generates a wallet and saves the key locally:
 
 ```
-Request → 402 (price: $0.002) → sign USDC → retry with payment → stream response
+$ openclaw plugin install @blockrun/openclaw
+BlockRun wallet created: 0xABC123...
+Fund with USDC on Base to start. Wallet key saved to ~/.openclaw/blockrun.key
 ```
+
+Fund the printed address with USDC on Base:
+- **Coinbase Onramp** — credit card → USDC on Base in one step
+- **CEX withdraw** — send USDC from Coinbase/Binance to Base
+- **Bridge** — move USDC from any chain to Base
+
+### Bring Your Own Wallet
+
+Already have a funded wallet? Set it directly:
 
 ```bash
 export BLOCKRUN_WALLET_KEY=0x...your_private_key...
 ```
 
-That's it. No signup, no dashboard, no credit card. Fund your wallet with USDC on Base and start making requests.
+### How Payment Works
+
+The plugin handles x402 micropayments transparently. Each API call pays only for what it uses:
+
+```
+Request → 402 (price: $0.002) → sign USDC → retry with payment → stream response
+```
+
+No signup, no dashboard, no credit card. Your wallet balance IS your account.
 
 ## Spend Controls
 
@@ -166,7 +188,7 @@ src/
 ├── router.ts     # Smart routing logic (model selection)
 ├── budget.ts     # Spend controls and budget enforcement
 ├── models.ts     # Model definitions and pricing
-├── auth.ts       # Wallet key resolution
+├── auth.ts       # Wallet auto-generation and key resolution
 └── types.ts      # Type definitions
 ```
 
@@ -193,10 +215,11 @@ GET  /api/v1/budget              — Current spend vs. limits
 ## Quick Start
 
 ```bash
-# Install
+# Install (auto-generates wallet on first run)
 openclaw plugin install @blockrun/openclaw
 
-# Set your wallet key (USDC on Base)
+# Fund the wallet with USDC on Base (address printed on install)
+# Or bring your own:
 export BLOCKRUN_WALLET_KEY=0x...
 
 # Use smart routing

@@ -41,7 +41,7 @@ import { InsufficientFundsError, EmptyWalletError } from "./errors.js";
 
 const BLOCKRUN_API = "https://blockrun.ai/api";
 const AUTO_MODEL = "blockrun/auto";
-const USER_AGENT = "clawrouter/0.3.4";
+const USER_AGENT = "clawrouter/0.3.5";
 const HEARTBEAT_INTERVAL_MS = 2_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 180_000; // 3 minutes (allows for on-chain tx + LLM response)
 const DEFAULT_PORT = 8402;

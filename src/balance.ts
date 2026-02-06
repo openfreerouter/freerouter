@@ -175,10 +175,7 @@ export class BalanceMonitor {
     } catch (error) {
       // Throw typed error instead of silently returning 0
       // This allows callers to distinguish "node down" from "wallet empty"
-      throw new RpcError(
-        error instanceof Error ? error.message : "Unknown error",
-        error,
-      );
+      throw new RpcError(error instanceof Error ? error.message : "Unknown error", error);
     }
   }
 

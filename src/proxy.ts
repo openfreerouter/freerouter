@@ -197,7 +197,16 @@ export async function startProxy(options: ProxyOptions): Promise<ProxyHandle> {
     }
 
     try {
-      await proxyRequest(req, res, apiBase, payFetch, options, routerOpts, deduplicator, balanceMonitor);
+      await proxyRequest(
+        req,
+        res,
+        apiBase,
+        payFetch,
+        options,
+        routerOpts,
+        deduplicator,
+        balanceMonitor,
+      );
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       options.onError?.(error);

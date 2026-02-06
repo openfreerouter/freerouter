@@ -89,7 +89,10 @@ async function main() {
     const genericErr = new Error("generic");
 
     assert(isInsufficientFundsError(insuffErr), "Should detect InsufficientFundsError");
-    assert(!isInsufficientFundsError(emptyErr), "Should not detect EmptyWalletError as InsufficientFundsError");
+    assert(
+      !isInsufficientFundsError(emptyErr),
+      "Should not detect EmptyWalletError as InsufficientFundsError",
+    );
     assert(!isInsufficientFundsError(genericErr), "Should not detect generic Error");
     assert(!isInsufficientFundsError(null), "Should handle null");
     assert(!isInsufficientFundsError("string"), "Should handle string");
@@ -104,7 +107,10 @@ async function main() {
     const emptyErr = new EmptyWalletError("0x");
 
     assert(isEmptyWalletError(emptyErr), "Should detect EmptyWalletError");
-    assert(!isEmptyWalletError(insuffErr), "Should not detect InsufficientFundsError as EmptyWalletError");
+    assert(
+      !isEmptyWalletError(insuffErr),
+      "Should not detect InsufficientFundsError as EmptyWalletError",
+    );
   });
 
   await test("isBalanceError detects both error types", () => {
@@ -129,7 +135,10 @@ async function main() {
     const err = new RpcError("Failed to connect to Base RPC", originalErr);
     assertEqual(err.code, "RPC_ERROR");
     assertEqual(err.originalError, originalErr);
-    assert(err.message.includes("Failed to connect to Base RPC"), "Message should include error details");
+    assert(
+      err.message.includes("Failed to connect to Base RPC"),
+      "Message should include error details",
+    );
     assert(err.message.includes("Check network connectivity"), "Message should include help text");
   });
 
@@ -227,7 +236,11 @@ async function main() {
     assertEqual((monitor as any).cachedBalance, 4_000_000n, "Should have $4.00 after deduction");
 
     monitor.deductEstimated(500_000n); // deduct $0.50
-    assertEqual((monitor as any).cachedBalance, 3_500_000n, "Should have $3.50 after second deduction");
+    assertEqual(
+      (monitor as any).cachedBalance,
+      3_500_000n,
+      "Should have $3.50 after second deduction",
+    );
   });
 
   await test("deductEstimated does not go negative", () => {
@@ -274,7 +287,9 @@ async function main() {
   });
 
   // --- Summary ---
-  console.log(`\n=== ${failed === 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED"} (${passed} passed, ${failed} failed) ===\n`);
+  console.log(
+    `\n=== ${failed === 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED"} (${passed} passed, ${failed} failed) ===\n`,
+  );
   process.exit(failed === 0 ? 0 : 1);
 }
 

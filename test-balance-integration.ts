@@ -47,7 +47,11 @@ async function main() {
   // Track callbacks
   let lowBalanceCalled = false;
   let insufficientFundsCalled = false;
-  let insufficientFundsInfo: { balanceUSD: string; requiredUSD: string; walletAddress: string } | null = null;
+  let insufficientFundsInfo: {
+    balanceUSD: string;
+    requiredUSD: string;
+    walletAddress: string;
+  } | null = null;
 
   // Start proxy with empty wallet
   console.log("Starting proxy with empty wallet...");
@@ -60,7 +64,9 @@ async function main() {
       lowBalanceCalled = true;
     },
     onInsufficientFunds: (info) => {
-      console.log(`[onInsufficientFunds] Balance: ${info.balanceUSD}, Required: ${info.requiredUSD}, Wallet: ${info.walletAddress}`);
+      console.log(
+        `[onInsufficientFunds] Balance: ${info.balanceUSD}, Required: ${info.requiredUSD}, Wallet: ${info.walletAddress}`,
+      );
       insufficientFundsCalled = true;
       insufficientFundsInfo = info;
     },
@@ -94,16 +100,28 @@ async function main() {
 
     const body = await res.json();
     assert(body.error?.type === "proxy_error", "Expected proxy_error type");
-    assert(body.error?.message?.includes("No USDC balance"), `Expected "No USDC balance" in message, got: ${body.error?.message}`);
-    assert(body.error?.message?.includes(emptyAccount.address), "Expected wallet address in error message");
+    assert(
+      body.error?.message?.includes("No USDC balance"),
+      `Expected "No USDC balance" in message, got: ${body.error?.message}`,
+    );
+    assert(
+      body.error?.message?.includes(emptyAccount.address),
+      "Expected wallet address in error message",
+    );
   });
 
   // Test 3: onInsufficientFunds callback was called
   await test("onInsufficientFunds callback was called", async () => {
     assert(insufficientFundsCalled, "onInsufficientFunds should have been called");
     assert(insufficientFundsInfo !== null, "Should have callback info");
-    assert(insufficientFundsInfo!.walletAddress === emptyAccount.address, "Wallet address should match");
-    assert(insufficientFundsInfo!.balanceUSD === "$0.00", `Expected $0.00 balance, got ${insufficientFundsInfo!.balanceUSD}`);
+    assert(
+      insufficientFundsInfo!.walletAddress === emptyAccount.address,
+      "Wallet address should match",
+    );
+    assert(
+      insufficientFundsInfo!.balanceUSD === "$0.00",
+      `Expected $0.00 balance, got ${insufficientFundsInfo!.balanceUSD}`,
+    );
   });
 
   // Test 4: Streaming request also fails correctly
@@ -125,12 +143,18 @@ async function main() {
     // Either way, the callback should be called
     const text = await res.text();
 
-    assert(insufficientFundsCalled, "onInsufficientFunds should have been called for streaming request");
+    assert(
+      insufficientFundsCalled,
+      "onInsufficientFunds should have been called for streaming request",
+    );
 
     // Check error is in response
     if (res.status === 200) {
       // SSE format - error sent as data event
-      assert(text.includes("proxy_error") || text.includes("No USDC"), "Expected error in SSE stream");
+      assert(
+        text.includes("proxy_error") || text.includes("No USDC"),
+        "Expected error in SSE stream",
+      );
     } else {
       assert(res.status === 502, `Expected 200 or 502, got ${res.status}`);
     }
@@ -157,7 +181,9 @@ async function main() {
   // Cleanup
   await proxy.close();
 
-  console.log(`\n=== ${failed === 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED"} (${passed} passed, ${failed} failed) ===\n`);
+  console.log(
+    `\n=== ${failed === 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED"} (${passed} passed, ${failed} failed) ===\n`,
+  );
   process.exit(failed === 0 ? 0 : 1);
 }
 

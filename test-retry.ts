@@ -285,7 +285,9 @@ async function main() {
   });
 
   // --- Summary ---
-  console.log(`\n=== ${failed === 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED"} (${passed} passed, ${failed} failed) ===\n`);
+  console.log(
+    `\n=== ${failed === 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED"} (${passed} passed, ${failed} failed) ===\n`,
+  );
   process.exit(failed === 0 ? 0 : 1);
 }
 

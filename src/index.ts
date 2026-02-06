@@ -50,12 +50,16 @@ async function startProxyInBackground(api: OpenClawPluginApi): Promise<void> {
     if (startupBalance.isEmpty) {
       api.logger.warn(`[!] No USDC balance. Fund wallet to use ClawRouter: ${address}`);
     } else if (startupBalance.isLow) {
-      api.logger.warn(`[!] Low balance: ${startupBalance.balanceUSD} remaining. Fund wallet: ${address}`);
+      api.logger.warn(
+        `[!] Low balance: ${startupBalance.balanceUSD} remaining. Fund wallet: ${address}`,
+      );
     } else {
       api.logger.info(`Wallet balance: ${startupBalance.balanceUSD}`);
     }
   } catch (err) {
-    api.logger.warn(`Could not check wallet balance: ${err instanceof Error ? err.message : String(err)}`);
+    api.logger.warn(
+      `Could not check wallet balance: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   // Resolve routing config overrides from plugin config
@@ -79,7 +83,9 @@ async function startProxyInBackground(api: OpenClawPluginApi): Promise<void> {
       api.logger.warn(`[!] Low balance: ${info.balanceUSD}. Fund wallet: ${info.walletAddress}`);
     },
     onInsufficientFunds: (info) => {
-      api.logger.error(`[!] Insufficient funds. Balance: ${info.balanceUSD}, Needed: ${info.requiredUSD}. Fund wallet: ${info.walletAddress}`);
+      api.logger.error(
+        `[!] Insufficient funds. Balance: ${info.balanceUSD}, Needed: ${info.requiredUSD}. Fund wallet: ${info.walletAddress}`,
+      );
     },
   });
 
@@ -129,6 +135,14 @@ export { createPaymentFetch } from "./x402.js";
 export type { PreAuthParams, PaymentFetchResult } from "./x402.js";
 export { BalanceMonitor, BALANCE_THRESHOLDS } from "./balance.js";
 export type { BalanceInfo, SufficiencyResult } from "./balance.js";
-export { InsufficientFundsError, EmptyWalletError, RpcError, isInsufficientFundsError, isEmptyWalletError, isBalanceError, isRpcError } from "./errors.js";
+export {
+  InsufficientFundsError,
+  EmptyWalletError,
+  RpcError,
+  isInsufficientFundsError,
+  isEmptyWalletError,
+  isBalanceError,
+  isRpcError,
+} from "./errors.js";
 export { fetchWithRetry, isRetryable, DEFAULT_RETRY_CONFIG } from "./retry.js";
 export type { RetryConfig } from "./retry.js";

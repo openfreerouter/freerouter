@@ -420,7 +420,7 @@ Agents shouldn't need a human to paste API keys. They should generate a wallet, 
 ### Quick Checklist
 
 ```bash
-# 1. Check your version (should be 0.3.12+)
+# 1. Check your version (should be 0.3.16+)
 cat ~/.openclaw/extensions/clawrouter/package.json | grep version
 
 # 2. Check proxy is running
@@ -439,18 +439,9 @@ Plugin isn't loaded or outdated. **Don't change the model name** — `blockrun/a
 
 ### "No API key found for provider blockrun"
 
-Version < 0.3.11 doesn't properly create auth profiles when the agents directory doesn't exist.
+Auth profile is missing or wasn't created properly.
 
-**Fix:** See [How to Update ClawRouter](#how-to-update-clawrouter) for clean reinstall steps.
-
-After update, logs should show: `Injected BlockRun auth profile for agent: main`
-
-If the issue persists, manually create the auth profile:
-
-```bash
-mkdir -p ~/.openclaw/agents/main/agent
-echo '{"blockrun":{"profileId":"default","credential":{"apiKey":"x402-proxy-handles-auth"}}}' > ~/.openclaw/agents/main/agent/auth-profiles.json
-```
+**Fix:** See [How to Update ClawRouter](#how-to-update-clawrouter) — the reinstall script automatically injects the auth profile.
 
 ### "Config validation failed: plugin not found: clawrouter"
 

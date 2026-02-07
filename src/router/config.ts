@@ -60,10 +60,13 @@ export const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
       "функция",
       "класс",
       "импорт",
+      "определ",
       "запрос",
       "асинхронный",
+      "ожидать",
       "константа",
       "переменная",
+      "вернуть",
     ],
     reasoningKeywords: [
       // English
@@ -93,10 +96,15 @@ export const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
       "論理的",
       // Russian
       "доказать",
+      "докажи",
+      "доказательств",
       "теорема",
       "вывести",
       "шаг за шагом",
+      "пошагово",
+      "поэтапно",
       "цепочка рассуждений",
+      "рассуждени",
       "формально",
       "математически",
       "логически",
@@ -134,11 +142,14 @@ export const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
       "что такое",
       "определение",
       "перевести",
+      "переведи",
       "привет",
       "да или нет",
       "столица",
+      "сколько лет",
       "кто такой",
       "когда",
+      "объясни",
     ],
     technicalKeywords: [
       // English
@@ -168,6 +179,8 @@ export const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
       // Russian
       "алгоритм",
       "оптимизировать",
+      "оптимизаци",
+      "оптимизируй",
       "архитектура",
       "распределённый",
       "микросервис",
@@ -200,11 +213,14 @@ export const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
       "想像",
       // Russian
       "история",
+      "рассказ",
       "стихотворение",
       "сочинить",
+      "сочини",
       "мозговой штурм",
       "творческий",
       "представить",
+      "придумай",
       "напиши",
     ],
 
@@ -242,13 +258,21 @@ export const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
       "設定",
       // Russian
       "построить",
+      "построй",
       "создать",
+      "создай",
       "реализовать",
+      "реализуй",
       "спроектировать",
       "разработать",
+      "разработай",
+      "сконструировать",
       "сгенерировать",
+      "сгенерируй",
       "развернуть",
+      "разверни",
       "настроить",
+      "настрой",
     ],
     constraintIndicators: [
       // English
@@ -279,7 +303,9 @@ export const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
       "予算",
       // Russian
       "не более",
+      "не менее",
       "как минимум",
+      "в пределах",
       "максимум",
       "минимум",
       "ограничение",
@@ -342,6 +368,7 @@ export const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
       "следующий",
       "документация",
       "код",
+      "ранее",
       "вложение",
     ],
     negationKeywords: [
@@ -369,11 +396,14 @@ export const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
       "除く",
       // Russian
       "не делай",
+      "не надо",
+      "нельзя",
       "избегать",
       "никогда",
       "без",
       "кроме",
       "исключить",
+      "больше не",
     ],
     domainSpecificKeywords: [
       // English
@@ -411,6 +441,7 @@ export const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
       "топологический",
       "гомоморфный",
       "с нулевым разглашением",
+      "на основе решёток",
     ],
 
     // Dimension weights (sum to 1.0)

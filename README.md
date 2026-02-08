@@ -291,13 +291,13 @@ Routing is **client-side** — open source and inspectable.
 
 For basic usage, no configuration is needed. For advanced options:
 
-| Setting               | Default  | Description                      |
-| --------------------- | -------- | -------------------------------- |
+| Setting               | Default  | Description                          |
+| --------------------- | -------- | ------------------------------------ |
 | `CLAWROUTER_DISABLED` | `false`  | Disable plugin (use default routing) |
-| `BLOCKRUN_PROXY_PORT` | `8402`   | Proxy port (env var)             |
-| `BLOCKRUN_WALLET_KEY` | auto     | Wallet private key (env var)     |
-| `routing.tiers`       | see docs | Override tier→model mappings     |
-| `routing.scoring`     | see docs | Custom keyword weights           |
+| `BLOCKRUN_PROXY_PORT` | `8402`   | Proxy port (env var)                 |
+| `BLOCKRUN_WALLET_KEY` | auto     | Wallet private key (env var)         |
+| `routing.tiers`       | see docs | Override tier→model mappings         |
+| `routing.scoring`     | see docs | Custom keyword weights               |
 
 **Quick examples:**
 

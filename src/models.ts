@@ -451,9 +451,24 @@ function toOpenClawModel(m: BlockRunModel): ModelDefinitionConfig {
 }
 
 /**
- * All BlockRun models in OpenClaw format.
+ * Alias models that map to real models.
+ * These allow users to use friendly names like "free" or "gpt-120b".
  */
-export const OPENCLAW_MODELS: ModelDefinitionConfig[] = BLOCKRUN_MODELS.map(toOpenClawModel);
+const ALIAS_MODELS: ModelDefinitionConfig[] = Object.entries(MODEL_ALIASES)
+  .map(([alias, targetId]) => {
+    const target = BLOCKRUN_MODELS.find((m) => m.id === targetId);
+    if (!target) return null;
+    return toOpenClawModel({ ...target, id: alias, name: `${alias} → ${target.name}` });
+  })
+  .filter((m): m is ModelDefinitionConfig => m !== null);
+
+/**
+ * All BlockRun models in OpenClaw format (including aliases).
+ */
+export const OPENCLAW_MODELS: ModelDefinitionConfig[] = [
+  ...BLOCKRUN_MODELS.map(toOpenClawModel),
+  ...ALIAS_MODELS,
+];
 
 /**
  * Build a ModelProviderConfig for BlockRun.

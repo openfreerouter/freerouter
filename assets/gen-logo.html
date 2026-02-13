@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html><body style="margin:0;background:#0d1117">
+<canvas id="c" width="512" height="512"></canvas>
+<script>
+const c = document.getElementById('c');
+const ctx = c.getContext('2d');
+
+// Background
+ctx.fillStyle = '#0d1117';
+ctx.fillRect(0, 0, 512, 512);
+
+// Circle background
+ctx.beginPath();
+ctx.arc(256, 256, 230, 0, Math.PI * 2);
+ctx.fillStyle = '#161b22';
+ctx.fill();
+ctx.strokeStyle = '#30363d';
+ctx.lineWidth = 3;
+ctx.stroke();
+
+// Input node (left)
+ctx.beginPath();
+ctx.arc(130, 256, 32, 0, Math.PI * 2);
+ctx.fillStyle = '#e6edf3';
+ctx.fill();
+
+// Output nodes (right)
+// Simple (green, top)
+ctx.beginPath();
+ctx.arc(370, 130, 32, 0, Math.PI * 2);
+ctx.fillStyle = '#3fb950';
+ctx.fill();
+
+// Medium (blue, middle)
+ctx.beginPath();
+ctx.arc(370, 256, 32, 0, Math.PI * 2);
+ctx.fillStyle = '#58a6ff';
+ctx.fill();
+
+// Complex (purple, bottom)
+ctx.beginPath();
+ctx.arc(370, 382, 32, 0, Math.PI * 2);
+ctx.fillStyle = '#bc8cff';
+ctx.fill();
+
+// Lines
+ctx.lineWidth = 6;
+ctx.lineCap = 'round';
+
+// To green
+ctx.beginPath();
+ctx.moveTo(160, 242);
+ctx.lineTo(340, 140);
+ctx.strokeStyle = '#3fb950';
+ctx.stroke();
+
+// To blue
+ctx.beginPath();
+ctx.moveTo(162, 256);
+ctx.lineTo(338, 256);
+ctx.strokeStyle = '#58a6ff';
+ctx.stroke();
+
+// To purple
+ctx.beginPath();
+ctx.moveTo(160, 270);
+ctx.lineTo(340, 372);
+ctx.strokeStyle = '#bc8cff';
+ctx.stroke();
+
+// Labels on nodes
+ctx.font = 'bold 24px monospace';
+ctx.textAlign = 'center';
+ctx.textBaseline = 'middle';
+ctx.fillStyle = '#0d1117';
+
+ctx.fillText('IN', 130, 256);
+ctx.fillText('S', 370, 130);
+ctx.fillText('M', 370, 256);
+ctx.fillText('C', 370, 382);
+
+// Download link
+const link = document.createElement('a');
+link.download = 'freerouter-logo.png';
+link.href = c.toDataURL('image/png');
+link.textContent = 'Download PNG';
+link.style.color = 'white';
+link.style.fontSize = '20px';
+link.style.position = 'fixed';
+link.style.bottom = '20px';
+link.style.left = '20px';
+document.body.appendChild(link);
+</script>
+</body></html>

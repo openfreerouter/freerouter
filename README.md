@@ -1,7 +1,7 @@
 # FreeRouter — Free, Self-Hosted AI Model Router (OpenRouter Alternative)
 
 <p align="center">
-  <img src="assets/logo.svg" width="200" alt="FreeRouter Logo"/>
+  <img src="assets/logo.png" width="200" alt="FreeRouter Logo"/>
 </p>
 
 **Route AI requests to the right model automatically — using your own API keys. No middleman, no markup, no payment layer.**

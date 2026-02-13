@@ -1,8 +1,9 @@
 /**
- * Smart Router Types
+ * Smart Router Types — Forked from ClawRouter (MIT License)
+ * Stripped of x402/BlockRun payment layer.
  *
  * Four classification tiers — REASONING is distinct from COMPLEX because
- * reasoning tasks need different models (o3, gemini-pro) than general
+ * reasoning tasks need different models (o3, deepseek-reasoner) than general
  * complex tasks (gpt-4o, sonnet-4).
  *
  * Scoring uses weighted float dimensions with sigmoid confidence calibration.
@@ -12,7 +13,7 @@ export type Tier = "SIMPLE" | "MEDIUM" | "COMPLEX" | "REASONING";
 
 export type ScoringResult = {
   score: number; // weighted float (roughly [-0.3, 0.4])
-  tier: Tier | null; // null = ambiguous, needs fallback classifier
+  tier: Tier | null; // null = ambiguous, needs fallback
   confidence: number; // sigmoid-calibrated [0, 1]
   signals: string[];
   agenticScore?: number; // 0-1 agentic task score for auto-switching to agentic tiers
@@ -41,16 +42,13 @@ export type ScoringConfig = {
   simpleKeywords: string[];
   technicalKeywords: string[];
   creativeKeywords: string[];
-  // New dimension keyword lists
   imperativeVerbs: string[];
   constraintIndicators: string[];
   outputFormatKeywords: string[];
   referenceKeywords: string[];
   negationKeywords: string[];
   domainSpecificKeywords: string[];
-  // Agentic task detection keywords
   agenticTaskKeywords: string[];
-  // Weighted scoring parameters
   dimensionWeights: Record<string, number>;
   tierBoundaries: {
     simpleMedium: number;
@@ -73,11 +71,6 @@ export type OverridesConfig = {
   maxTokensForceComplex: number;
   structuredOutputMinTier: Tier;
   ambiguousDefaultTier: Tier;
-  /**
-   * When enabled, prefer models optimized for agentic workflows.
-   * Agentic models continue autonomously with multi-step tasks
-   * instead of stopping and waiting for user input.
-   */
   agenticMode?: boolean;
 };
 
@@ -86,7 +79,6 @@ export type RoutingConfig = {
   classifier: ClassifierConfig;
   scoring: ScoringConfig;
   tiers: Record<Tier, TierConfig>;
-  /** Tier configs for agentic mode - models that excel at multi-step tasks */
   agenticTiers?: Record<Tier, TierConfig>;
   overrides: OverridesConfig;
 };

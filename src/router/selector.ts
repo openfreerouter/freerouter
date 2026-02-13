@@ -1,7 +1,8 @@
 /**
  * Tier → Model Selection
+ * Forked from ClawRouter (MIT License). No payment dependencies.
  *
- * Maps a classification tier to the cheapest capable model.
+ * Maps a classification tier to the best model from configured providers.
  * Builds RoutingDecision metadata with cost estimates and savings.
  */
 
@@ -29,17 +30,16 @@ export function selectModel(
   const model = tierConfig.primary;
   const pricing = modelPricing.get(model);
 
-  // Defensive: guard against undefined price fields (not just undefined pricing)
   const inputPrice = pricing?.inputPrice ?? 0;
   const outputPrice = pricing?.outputPrice ?? 0;
   const inputCost = (estimatedInputTokens / 1_000_000) * inputPrice;
   const outputCost = (maxOutputTokens / 1_000_000) * outputPrice;
   const costEstimate = inputCost + outputCost;
 
-  // Baseline: what Claude Opus would cost (the premium default)
-  const opusPricing = modelPricing.get("anthropic/claude-opus-4");
-  const opusInputPrice = opusPricing?.inputPrice ?? 0;
-  const opusOutputPrice = opusPricing?.outputPrice ?? 0;
+  // Baseline: what the most expensive configured model would cost
+  const opusPricing = modelPricing.get("anthropic/claude-opus-4-6");
+  const opusInputPrice = opusPricing?.inputPrice ?? 15;
+  const opusOutputPrice = opusPricing?.outputPrice ?? 75;
   const baselineInput = (estimatedInputTokens / 1_000_000) * opusInputPrice;
   const baselineOutput = (maxOutputTokens / 1_000_000) * opusOutputPrice;
   const baselineCost = baselineInput + baselineOutput;
@@ -67,8 +67,7 @@ export function getFallbackChain(tier: Tier, tierConfigs: Record<Tier, TierConfi
 }
 
 /**
- * Calculate cost for a specific model (used when fallback model is used).
- * Returns updated cost fields for RoutingDecision.
+ * Calculate cost for a specific model.
  */
 export function calculateModelCost(
   model: string,
@@ -78,17 +77,15 @@ export function calculateModelCost(
 ): { costEstimate: number; baselineCost: number; savings: number } {
   const pricing = modelPricing.get(model);
 
-  // Defensive: guard against undefined price fields (not just undefined pricing)
   const inputPrice = pricing?.inputPrice ?? 0;
   const outputPrice = pricing?.outputPrice ?? 0;
   const inputCost = (estimatedInputTokens / 1_000_000) * inputPrice;
   const outputCost = (maxOutputTokens / 1_000_000) * outputPrice;
   const costEstimate = inputCost + outputCost;
 
-  // Baseline: what Claude Opus would cost
-  const opusPricing = modelPricing.get("anthropic/claude-opus-4");
-  const opusInputPrice = opusPricing?.inputPrice ?? 0;
-  const opusOutputPrice = opusPricing?.outputPrice ?? 0;
+  const opusPricing = modelPricing.get("anthropic/claude-opus-4-6");
+  const opusInputPrice = opusPricing?.inputPrice ?? 15;
+  const opusOutputPrice = opusPricing?.outputPrice ?? 75;
   const baselineInput = (estimatedInputTokens / 1_000_000) * opusInputPrice;
   const baselineOutput = (maxOutputTokens / 1_000_000) * opusOutputPrice;
   const baselineCost = baselineInput + baselineOutput;
@@ -100,13 +97,6 @@ export function calculateModelCost(
 
 /**
  * Get the fallback chain filtered by context length.
- * Only returns models that can handle the estimated total context.
- *
- * @param tier - The tier to get fallback chain for
- * @param tierConfigs - Tier configurations
- * @param estimatedTotalTokens - Estimated total context (input + output)
- * @param getContextWindow - Function to get context window for a model ID
- * @returns Filtered list of models that can handle the context
  */
 export function getFallbackChainFiltered(
   tier: Tier,
@@ -116,22 +106,12 @@ export function getFallbackChainFiltered(
 ): string[] {
   const fullChain = getFallbackChain(tier, tierConfigs);
 
-  // Filter to models that can handle the context
   const filtered = fullChain.filter((modelId) => {
     const contextWindow = getContextWindow(modelId);
-    if (contextWindow === undefined) {
-      // Unknown model - include it (let API reject if needed)
-      return true;
-    }
-    // Add 10% buffer for safety
+    if (contextWindow === undefined) return true;
     return contextWindow >= estimatedTotalTokens * 1.1;
   });
 
-  // If all models filtered out, return the original chain
-  // (let the API error out - better than no options)
-  if (filtered.length === 0) {
-    return fullChain;
-  }
-
+  if (filtered.length === 0) return fullChain;
   return filtered;
 }

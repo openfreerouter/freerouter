@@ -1,402 +1,269 @@
-![ClawRouter Banner](assets/banner.png)
+# FreeRouter — Smart Model Routing for OpenClaw
 
-<div align="center">
+> **Forked from [BlockRunAI/ClawRouter](https://github.com/BlockRunAI/ClawRouter).** FreeRouter strips the x402 payment protocol and gives you the same powerful 14-dimension routing engine — free, open, using your own API keys.
 
-Route every request to the cheapest model that can handle it.
-One wallet, 30+ models, zero API keys.
+## How Is This Different from ClawRouter?
 
-[![npm](https://img.shields.io/npm/v/@blockrun/clawrouter.svg)](https://npmjs.com/package/@blockrun/clawrouter)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://typescriptlang.org)
-[![Node](https://img.shields.io/badge/node-%E2%89%A520-brightgreen.svg)](https://nodejs.org)
-[![USDC Hackathon Winner](https://img.shields.io/badge/🏆_USDC_Hackathon-Agentic_Commerce_Winner-gold)](https://x.com/USDC/status/2021625822294216977)
+| | ClawRouter (BlockRunAI) | FreeRouter |
+|---|---|---|
+| **Routing engine** | ✅ 14-dimension classifier | ✅ Same engine, same scoring |
+| **Payment layer** | x402 protocol — crypto micropayments per API call | ❌ **Removed entirely** |
+| **Wallet integration** | Bitcoin/Lightning wallet required | ❌ **Removed** |
+| **API keys** | Managed through payment system | ✅ **Your own keys** — reads from OpenClaw's auth or env vars |
+| **Token metering** | Billed per-token via x402 | ❌ **Removed** — you pay providers directly |
+| **Multi-provider** | Single provider | ✅ **Anthropic + Kimi + any OpenAI-compatible** |
+| **Thinking injection** | Not included | ✅ **Auto-configures** thinking per model (Sonnet budget, Opus adaptive) |
+| **Fallback logic** | Not included | ✅ **Auto-retries** with fallback model on failure |
+| **Context-aware routing** | Current message only | ✅ **Last 3 messages** included in classification |
+| **OpenClaw integration** | Generic | ✅ **Native** — reads auth-profiles.json, works as drop-in provider |
 
-[Docs](https://blockrun.ai/docs) &middot; [Models](https://blockrun.ai/models) &middot; [Configuration](docs/configuration.md) &middot; [Features](docs/features.md) &middot; [Windows](docs/windows-installation.md) &middot; [Troubleshooting](docs/troubleshooting.md) &middot; [Telegram](https://t.me/blockrunAI) &middot; [X](https://x.com/BlockRunAI)
-
-**Winner — Agentic Commerce Track** at the [USDC AI Agent Hackathon](https://x.com/USDC/status/2021625822294216977)<br>
-_The world's first hackathon run entirely by AI agents, powered by USDC_
-
-</div>
-
----
-
-```
-"What is 2+2?"            → NVIDIA Kimi     $0.001/M   saved ~100%
-"Summarize this article"  → Grok Code Fast  $1.50/M    saved 94%
-"Build a React component" → Gemini 2.5 Pro  $10.00/M   best balance
-"Prove this theorem"      → Grok 4.1 Fast   $0.50/M    reasoning
-"Run 50 parallel searches"→ Kimi K2.5       $2.40/M    agentic swarm
-```
-
-## Why ClawRouter?
-
-- **100% local routing** — 15-dimension weighted scoring runs on your machine in <1ms
-- **Zero external calls** — no API calls for routing decisions, ever
-- **30+ models** — OpenAI, Anthropic, Google, DeepSeek, xAI, Moonshot through one wallet
-- **x402 micropayments** — pay per request with USDC on Base, no API keys
-- **Open source** — MIT licensed, fully inspectable routing logic
-
-### Ask Your OpenClaw How ClawRouter Saves You Money
-
-<img src="docs/clawrouter-savings.png" alt="ClawRouter savings explanation" width="600">
+**In short:** Same brain, no paywall. You bring your own API keys, you control everything.
 
 ---
 
-## Quick Start (2 mins)
+## What Is This?
+
+FreeRouter is a transparent proxy that sits between OpenClaw and your AI providers. Instead of sending every message to one expensive model, it **classifies each message by complexity** and routes it to the right model automatically.
+
+OpenClaw sees one model (`freerouter/auto`). Behind the scenes, FreeRouter picks the best backend:
+
+```
+User → OpenClaw Gateway → FreeRouter (:18800) → Classifier → Kimi K2.5 / Sonnet 4.5 / Opus 4.6
+```
+
+## Why?
+
+- "Hello" doesn't need Opus. Kimi handles it for ~0 cost.
+- "Debug this race condition in my async pipeline" does need Opus.
+- You save 60-80% on API costs without sacrificing quality where it matters.
+
+## Tier System
+
+| Tier | When | Model | Thinking | Fallback |
+|------|------|-------|----------|----------|
+| SIMPLE | Greetings, factual questions, translations | Kimi K2.5 | none | Haiku 4.5 |
+| MEDIUM | Code help, conversation, tool use | Sonnet 4.5 | enabled (budget: 4096) | Opus 4.6 |
+| COMPLEX | Architecture, debugging, deep analysis | Opus 4.6 | adaptive | Sonnet 4.5 |
+| REASONING | Multi-step logic, math proofs, system design | Opus 4.6 | adaptive | Sonnet 4.5 |
+
+**Bias toward upgrading.** If in doubt, it picks the higher tier. Overpay over under-deliver.
+
+## The 14-Dimension Classifier
+
+Each message is scored on 14 dimensions (0.0–1.0):
+
+1. **tokenCount** — message length
+2. **vocabularyComplexity** — rare/technical words
+3. **syntaxComplexity** — nested clauses, conditionals
+4. **domainSpecificity** — specialized field knowledge needed
+5. **ambiguity** — how open-ended the request is
+6. **contextDependency** — needs prior conversation context
+7. **reasoningDepth** — logical steps required
+8. **creativityLevel** — original generation needed
+9. **emotionalComplexity** — nuance in tone/sentiment
+10. **multimodality** — references to images/files/links
+11. **instructionComplexity** — multi-step instructions
+12. **knowledgeRecency** — needs recent/current information
+13. **codeComplexity** — programming difficulty
+14. **mathematicalComplexity** — formal math/proofs
+
+Scores are weighted and combined into a single complexity score. Tier boundaries:
+- `< 0.0` → SIMPLE (basically: short + simple vocabulary = cheap model)
+- `< 0.03` → MEDIUM
+- `< 0.15` → COMPLEX
+- `≥ 0.15` → REASONING
+
+### Context-Aware
+
+The classifier doesn't just look at the current message — it includes the **last 3 conversation messages** (truncated to 500 chars each). So if someone says "check this for me" after a long technical discussion, it inherits the complexity from context instead of being classified as SIMPLE.
+
+## What Was Stripped from ClawRouter
+
+These components from BlockRunAI's original were **removed entirely**:
+
+- **x402 payment protocol** — crypto micropayments per API call
+- **Wallet management** — Bitcoin/Lightning wallet integration
+- **Payment verification middleware** — transaction validation before routing
+- **Token metering for billing** — per-token usage tracking for payment
+- **Payment-related dependencies** — all crypto/wallet npm packages
+
+## What Was Added
+
+- `server.ts` — OpenAI-compatible HTTP proxy (zero external dependencies)
+- `provider.ts` — Multi-provider forwarding (Anthropic Messages API + Kimi/OpenAI) with SSE format translation
+- `auth.ts` — Reads OpenClaw's existing auth-profiles.json (no separate key management)
+- Fallback logic — if primary model fails, automatically retries with tier's fallback model
+- Context-aware classification — includes recent conversation history in scoring
+- Thinking parameter injection — automatically sets correct thinking config per model
+
+## Source Code
+
+```
+freerouter/
+├── src/
+│   ├── server.ts        # HTTP server, OpenAI-compatible API
+│   ├── provider.ts      # Forwards to Anthropic/Kimi, translates SSE formats
+│   ├── auth.ts          # Reads OpenClaw's auth-profiles.json for API keys
+│   ├── logger.ts        # Request logging
+│   └── router/
+│       ├── index.ts      # Main classifier logic (14 dimensions)
+│       ├── config.ts     # Tier mappings, model configs, scoring weights
+│       └── rules.ts      # Keyword-based overrides (e.g., "step by step" → REASONING)
+├── dist/                # Compiled JS (run `tsc` to build)
+├── tsconfig.json
+└── package.json
+```
+
+## Setup Instructions
+
+### 1. Get the Code
 
 ```bash
-# 1. Install with smart routing enabled by default
-curl -fsSL https://raw.githubusercontent.com/BlockRunAI/ClawRouter/main/scripts/reinstall.sh | bash
-
-# 2. Fund your wallet with USDC on Base (address printed on install)
-# $5 is enough for thousands of requests
-
-# 3. Restart OpenClaw gateway
-openclaw gateway restart
+git clone https://github.com/YOUR_USER/freerouter.git
+cd freerouter
 ```
 
-Done! Smart routing (`blockrun/auto`) is now your default model.
-
-### Windows Installation
-
-⚠️ **Current Status:** Windows installation is temporarily unavailable due to an OpenClaw CLI bug. The issue is with the OpenClaw framework, not ClawRouter itself.
-
-**📖 Full Windows Guide:** [docs/windows-installation.md](docs/windows-installation.md)
-
-**Quick Summary:**
-
-- ✅ ClawRouter code is Windows-compatible
-- ❌ OpenClaw CLI has a `spawn EINVAL` bug on Windows
-- ✅ Works perfectly on **Linux** and **macOS**
-- 🔧 Manual installation workaround available for advanced users
-- 🧪 Full Windows test infrastructure ready ([.github/workflows/test-windows.yml](.github/workflows/test-windows.yml))
-
-**For advanced users:** See the [complete manual installation guide](docs/windows-installation.md) with step-by-step PowerShell instructions.
-
-### Tips
-
-- **Use `/model blockrun/auto`** in any conversation to switch on the fly
-- **Free tier?** Use `/model free` — routes to gpt-oss-120b at $0
-- **Model aliases:** `/model sonnet`, `/model grok`, `/model deepseek`, `/model kimi`
-- **Want a specific model?** Use `blockrun/openai/gpt-4o` or `blockrun/anthropic/claude-sonnet-4`
-- **Already have a funded wallet?** `export BLOCKRUN_WALLET_KEY=0x...`
-
----
-
-## See It In Action
-
-<div align="center">
-<img src="assets/telegram-demo.png" alt="ClawRouter in action via Telegram" width="500"/>
-</div>
-
-**The flow:**
-
-1. **Wallet auto-generated** on Base (L2) — saved securely at `~/.openclaw/blockrun/wallet.key`
-2. **Fund with $1 USDC** — enough for hundreds of requests
-3. **Request any model** — "help me call Grok to check @hosseeb's opinion on AI agents"
-4. **ClawRouter routes it** — spawns a Grok sub-agent via `xai/grok-3`, pays per-request
-
-No API keys. No accounts. Just fund and go.
-
----
-
-## How Routing Works
-
-**100% local, <1ms, zero API calls.**
-
-```
-Request → Weighted Scorer (15 dimensions)
-              │
-              ├── High confidence → Pick model from tier → Done
-              │
-              └── Low confidence → Default to MEDIUM tier → Done
-```
-
-No external classifier calls. Ambiguous queries default to the MEDIUM tier (Grok Code Fast) — fast, cheap, and good enough for most tasks.
-
-**Deep dive:** [15-dimension scoring weights](docs/configuration.md#scoring-weights) | [Architecture](docs/architecture.md)
-
-### Tier → Model Mapping
-
-| Tier      | Primary Model           | Cost/M | Savings vs Opus |
-| --------- | ----------------------- | ------ | --------------- |
-| SIMPLE    | nvidia/kimi-k2.5        | $0.001 | **~100%**       |
-| MEDIUM    | grok-code-fast-1        | $1.50  | **94.0%**       |
-| COMPLEX   | gemini-2.5-pro          | $10.00 | **60.0%**       |
-| REASONING | grok-4-1-fast-reasoning | $0.50  | **98.0%**       |
-
-Special rule: 2+ reasoning markers → REASONING at 0.97 confidence.
-
-### Advanced Features
-
-ClawRouter v0.5+ includes intelligent features that work automatically:
-
-- **Agentic auto-detect** — routes multi-step tasks to Kimi K2.5
-- **Tool detection** — auto-switches when `tools` array present
-- **Context-aware** — filters models that can't handle your context size
-- **Model aliases** — `/model free`, `/model sonnet`, `/model grok`
-- **Session persistence** — pins model for multi-turn conversations
-- **Free tier fallback** — keeps working when wallet is empty
-- **Auto-update check** — notifies you when a new version is available
-
-**Full details:** [docs/features.md](docs/features.md)
-
-### Cost Savings
-
-| Tier                | % of Traffic | Cost/M      |
-| ------------------- | ------------ | ----------- |
-| SIMPLE              | ~45%         | $0.001      |
-| MEDIUM              | ~35%         | $1.50       |
-| COMPLEX             | ~15%         | $10.00      |
-| REASONING           | ~5%          | $0.50       |
-| **Blended average** |              | **$2.05/M** |
-
-Compared to **$25/M** for Claude Opus = **92% savings** on a typical workload.
-
----
-
-## Models
-
-30+ models across 6 providers, one wallet:
-
-| Model                 | Input $/M | Output $/M | Context | Reasoning |
-| --------------------- | --------- | ---------- | ------- | :-------: |
-| **OpenAI**            |           |            |         |           |
-| gpt-5.2               | $1.75     | $14.00     | 400K    |    \*     |
-| gpt-4o                | $2.50     | $10.00     | 128K    |           |
-| gpt-4o-mini           | $0.15     | $0.60      | 128K    |           |
-| gpt-oss-120b          | **$0**    | **$0**     | 128K    |           |
-| o3                    | $2.00     | $8.00      | 200K    |    \*     |
-| o3-mini               | $1.10     | $4.40      | 128K    |    \*     |
-| **Anthropic**         |           |            |         |           |
-| claude-opus-4.5       | $5.00     | $25.00     | 200K    |    \*     |
-| claude-sonnet-4       | $3.00     | $15.00     | 200K    |    \*     |
-| claude-haiku-4.5      | $1.00     | $5.00      | 200K    |           |
-| **Google**            |           |            |         |           |
-| gemini-2.5-pro        | $1.25     | $10.00     | 1M      |    \*     |
-| gemini-2.5-flash      | $0.15     | $0.60      | 1M      |           |
-| **DeepSeek**          |           |            |         |           |
-| deepseek-chat         | $0.14     | $0.28      | 128K    |           |
-| deepseek-reasoner     | $0.55     | $2.19      | 128K    |    \*     |
-| **xAI**               |           |            |         |           |
-| grok-3                | $3.00     | $15.00     | 131K    |    \*     |
-| grok-3-mini           | $0.30     | $0.50      | 131K    |           |
-| grok-4-fast-reasoning | $0.20     | $0.50      | 131K    |    \*     |
-| grok-4-fast           | $0.20     | $0.50      | 131K    |           |
-| grok-code-fast-1      | $0.20     | $1.50      | 131K    |           |
-| **Moonshot**          |           |            |         |           |
-| kimi-k2.5             | $0.50     | $2.40      | 262K    |    \*     |
-
-> **Free tier:** `gpt-oss-120b` costs nothing and serves as automatic fallback when wallet is empty.
-
-Full list: [`src/models.ts`](src/models.ts)
-
-### Kimi K2.5: Agentic Workflows
-
-[Kimi K2.5](https://kimi.ai) from Moonshot AI is optimized for agent swarm and multi-step workflows:
-
-- **Agent Swarm** — Coordinates up to 100 parallel agents, 4.5x faster execution
-- **Extended Tool Chains** — Stable across 200-300 sequential tool calls without drift
-- **Vision-to-Code** — Generates production React from UI mockups and videos
-- **Cost Efficient** — 76% cheaper than Claude Opus on agentic benchmarks
-
-Best for: parallel web research, multi-agent orchestration, long-running automation tasks.
-
----
-
-## Payment
-
-No account. No API key. **Payment IS authentication** via [x402](https://x402.org).
-
-```
-Request → 402 (price: $0.003) → wallet signs USDC → retry → response
-```
-
-USDC stays in your wallet until spent — non-custodial. Price is visible in the 402 header before signing.
-
-**Fund your wallet:**
-
-- Coinbase: Buy USDC, send to Base
-- Bridge: Move USDC from any chain to Base
-- CEX: Withdraw USDC to Base network
-
----
-
-## Wallet Configuration
-
-ClawRouter auto-generates and saves a wallet at `~/.openclaw/blockrun/wallet.key`.
+### 2. Install Dependencies & Build
 
 ```bash
-# Check wallet status
-/wallet
-
-# Use your own wallet
-export BLOCKRUN_WALLET_KEY=0x...
+npm install    # just typescript + @types/node
+npx tsc        # compiles to dist/
 ```
 
-**Full reference:** [Wallet configuration](docs/configuration.md#wallet-configuration) | [Backup & recovery](docs/configuration.md#wallet-backup--recovery)
+### 3. Configure Your Models
 
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Your Application                         │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   ClawRouter (localhost)                     │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐ │
-│  │ Weighted Scorer │→ │ Model Selector  │→ │ x402 Signer │ │
-│  │  (15 dimensions)│  │ (cheapest tier) │  │   (USDC)    │ │
-│  └─────────────────┘  └─────────────────┘  └─────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      BlockRun API                            │
-│    → OpenAI | Anthropic | Google | DeepSeek | xAI | Moonshot│
-└─────────────────────────────────────────────────────────────┘
-```
-
-Routing is **client-side** — open source and inspectable.
-
-**Deep dive:** [docs/architecture.md](docs/architecture.md) — request flow, payment system, optimizations
-
----
-
-## Configuration
-
-For basic usage, no configuration needed. For advanced options:
-
-| Setting               | Default | Description           |
-| --------------------- | ------- | --------------------- |
-| `CLAWROUTER_DISABLED` | `false` | Disable smart routing |
-| `BLOCKRUN_PROXY_PORT` | `8402`  | Proxy port            |
-| `BLOCKRUN_WALLET_KEY` | auto    | Wallet private key    |
-
-**Full reference:** [docs/configuration.md](docs/configuration.md)
-
----
-
-## Programmatic Usage
-
-Use ClawRouter directly in your code:
+Edit `src/router/config.ts` — set your tier→model mappings:
 
 ```typescript
-import { startProxy, route } from "@blockrun/clawrouter";
-
-// Start proxy server
-const proxy = await startProxy({ walletKey: "0x..." });
-
-// Or use router directly (no proxy)
-const decision = route("Prove sqrt(2) is irrational", ...);
+export const TIER_MODELS = {
+  SIMPLE:    { model: 'kimi-for-coding', provider: 'kimi',      fallback: 'claude-haiku-4-5-20250315' },
+  MEDIUM:    { model: 'claude-sonnet-4-5-20250514', provider: 'anthropic', fallback: 'claude-opus-4-0-20250115' },
+  COMPLEX:   { model: 'claude-opus-4-0-20250115',   provider: 'anthropic', fallback: 'claude-sonnet-4-5-20250514' },
+  REASONING: { model: 'claude-opus-4-0-20250115',   provider: 'anthropic', fallback: 'claude-sonnet-4-5-20250514' },
+};
 ```
 
-**Full examples:** [docs/configuration.md#programmatic-usage](docs/configuration.md#programmatic-usage)
+### 4. Configure Auth
 
----
+FreeRouter reads from OpenClaw's `auth-profiles.json` automatically. Your existing API keys just work.
 
-## Performance Optimizations (v0.3)
+**For Anthropic with OAuth tokens** (from `openclaw configure`):
+```typescript
+// In provider.ts — the auth recipe:
+// apiKey: null (don't send X-Api-Key)
+// authToken: token (sends as Bearer)
+// System prompt MUST start with: "You are Claude Code, Anthropic's official CLI for Claude."
+// Required headers:
+//   anthropic-beta: claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14
+//   user-agent: claude-cli/2.1.2
+//   anthropic-dangerous-direct-browser-access: true
+```
 
-- **SSE heartbeat**: Sends headers + heartbeat immediately, preventing upstream timeouts
-- **Response dedup**: SHA-256 hash → 30s cache, prevents double-charge on retries
-- **Payment pre-auth**: Caches 402 params, pre-signs USDC, skips 402 round trip (~200ms saved)
+**For regular Anthropic API keys** (`sk-ant-api03-*`): just set as `apiKey`, no special headers needed.
 
----
+**For Kimi**: standard OpenAI-compatible, needs `User-Agent: KimiCLI/0.77` header.
 
-## Cost Tracking
-
-Track your savings with `/stats` in any OpenClaw conversation.
-
-**Full details:** [docs/features.md#cost-tracking-with-stats](docs/features.md#cost-tracking-with-stats)
-
----
-
-## Why Not OpenRouter / LiteLLM?
-
-They're built for developers. ClawRouter is built for **agents**.
-
-|             | OpenRouter / LiteLLM        | ClawRouter                       |
-| ----------- | --------------------------- | -------------------------------- |
-| **Setup**   | Human creates account       | Agent generates wallet           |
-| **Auth**    | API key (shared secret)     | Wallet signature (cryptographic) |
-| **Payment** | Prepaid balance (custodial) | Per-request (non-custodial)      |
-| **Routing** | Proprietary / closed        | Open source, client-side         |
-
-Agents shouldn't need a human to paste API keys. They should generate a wallet, receive funds, and pay per request — programmatically.
-
----
-
-## Troubleshooting
-
-Quick checklist:
+### 5. Start the Proxy
 
 ```bash
-# Check version (should be 0.8.20+)
-cat ~/.openclaw/extensions/clawrouter/package.json | grep version
-
-# Check proxy running
-curl http://localhost:8402/health
-
-# Update to latest version
-curl -fsSL https://blockrun.ai/ClawRouter-update | bash
+node dist/src/server.js
+# Listening on http://localhost:18800
 ```
 
-ClawRouter automatically checks for updates on startup and shows a notification if a newer version is available.
+### 6. Wire Into OpenClaw
 
-**Full guide:** [docs/troubleshooting.md](docs/troubleshooting.md)
+Add to your `openclaw.json` under `providers`:
 
----
+```json
+{
+  "providers": {
+    "freerouter": {
+      "baseUrl": "http://localhost:18800",
+      "api": "openai-completions",
+      "models": [
+        { "id": "auto" }
+      ]
+    }
+  }
+}
+```
 
-## Development
+Set as default model in `agents.defaults`:
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "model": "freerouter/auto",
+      "models": [
+        { "provider": "freerouter", "model": "auto" }
+      ]
+    }
+  }
+}
+```
+
+Restart gateway once. Done.
+
+### 7. Verify
 
 ```bash
-git clone https://github.com/BlockRunAI/ClawRouter.git
-cd ClawRouter
-npm install
-npm run build
-npm run typecheck
-
-# End-to-end tests (requires funded wallet)
-BLOCKRUN_WALLET_KEY=0x... npx tsx test-e2e.ts
+curl http://localhost:18800/health          # {"status":"ok"}
+curl http://localhost:18800/v1/models       # lists available models
+curl http://localhost:18800/stats           # request statistics
+curl http://localhost:18800/reload          # reload auth keys without restart
 ```
 
+## Thinking Parameters (Important!)
+
+FreeRouter injects the correct thinking config per Anthropic model. **Get this wrong and you'll get errors.**
+
+| Model | Thinking Config | Notes |
+|-------|----------------|-------|
+| Sonnet 4.5 | `{ type: "enabled", budget_tokens: 4096 }` | Must specify budget |
+| Opus 4.6 | `{ type: "adaptive" }` | Model decides thinking depth (Anthropic recommended) |
+| Haiku 4.5 | none | Doesn't support thinking |
+| Kimi | none | Not Anthropic |
+
+**Never use `{ type: "enabled" }` without `budget_tokens` for Sonnet** — it errors.
+**Never set a budget for `adaptive`** — it's mutually exclusive.
+
+## Proxy Architecture
+
+The proxy speaks **OpenAI format** on both ends (to OpenClaw and from Kimi), but translates to **Anthropic Messages API** for Claude models:
+
+```
+OpenClaw (OpenAI format) → FreeRouter → classify message
+  → if Kimi: forward as OpenAI /chat/completions, stream back directly
+  → if Anthropic: translate to Messages API, inject thinking, stream SSE,
+    translate back to OpenAI format
+```
+
+## Tuning Tips
+
+- **Tier boundaries** in `config.ts` — lower = more messages upgrade to higher tier
+- **Scoring weights** — increase `codeComplexity` weight if your use case is mostly coding
+- **Keywords in `rules.ts`** — add domain-specific triggers (e.g., "kubernetes" → MEDIUM minimum)
+- **Fallback order** — set based on your budget. Cheap fallbacks save money, expensive ones save quality.
+- **Context window** — default 3 messages. Increase for more context-aware routing, decrease to save classifier tokens.
+
+## Lessons Learned
+
+1. **Anthropic OAuth tokens (`sk-ant-oat01-*`) need Claude Code identity headers** — without the system prompt prefix and beta flags, auth fails
+2. **Anthropic baseUrl must NOT include `/v1`** — OpenClaw auto-appends it. Double `/v1` = 404.
+3. **Kimi model ID is `kimi-for-coding`** — not `kimi-k2` or `k2p5` (those return 400)
+4. **`openai-completions`** is the correct OpenClaw API format (not `openai-chat`)
+5. **Proxy changes don't need gateway restart** — just recompile + restart the proxy process
+6. **Gateway restart only for `openclaw.json` changes** — and never stack restarts
+
+## Cost Impact
+
+| Without FreeRouter | With FreeRouter | Savings |
+|---|---|---|
+| All Opus: ~$50/day | Mixed routing: ~$10-15/day | 60-80% |
+
+Most messages are simple (greetings, short questions, acknowledgments). Those go to Kimi at near-zero cost. Only genuinely complex work hits Opus.
+
 ---
 
-## Roadmap
-
-- [x] Smart routing — 15-dimension weighted scoring, 4-tier model selection
-- [x] x402 payments — per-request USDC micropayments, non-custodial
-- [x] Response dedup — prevents double-charge on retries
-- [x] Payment pre-auth — skips 402 round trip
-- [x] SSE heartbeat — prevents upstream timeouts
-- [x] Agentic auto-detect — auto-switch to agentic models for multi-step tasks
-- [x] Tool detection — auto-switch to agentic mode when tools array present
-- [x] Context-aware routing — filter out models that can't handle context size
-- [x] Session persistence — pin model for multi-turn conversations
-- [x] Cost tracking — /stats command with savings dashboard
-- [x] Model aliases — `/model free`, `/model sonnet`, `/model grok`, etc.
-- [x] Free tier — gpt-oss-120b for $0 when wallet is empty
-- [x] Auto-update — startup version check with one-command update
-- [ ] Cascade routing — try cheap model first, escalate on low quality
-- [ ] Spend controls — daily/monthly budgets
-- [ ] Remote analytics — cost tracking at blockrun.ai
-
----
-
-## License
-
-MIT
-
----
-
-<div align="center">
-
-**[BlockRun](https://blockrun.ai)** — Pay-per-request AI infrastructure
-
-If ClawRouter saves you money, consider starring the repo.
-
-</div>
+*Forked from [BlockRunAI/ClawRouter](https://github.com/BlockRunAI/ClawRouter) — same routing brain, no payment layer, your own API keys.*

@@ -1,9 +1,10 @@
 /**
  * Rule-Based Classifier (v2 — Weighted Scoring)
+ * Forked from ClawRouter (MIT License). No payment dependencies.
  *
  * Scores a request across 14 weighted dimensions and maps the aggregate
  * score to a tier using configurable boundaries. Confidence is calibrated
- * via sigmoid — low confidence triggers the fallback classifier.
+ * via sigmoid — low confidence triggers fallback to default tier.
  *
  * Handles 70-80% of requests in < 1ms with zero cost.
  */
@@ -13,7 +14,6 @@ import type { Tier, ScoringResult, ScoringConfig } from "./types.js";
 type DimensionScore = { name: string; score: number; signal: string | null };
 
 // ─── Dimension Scorers ───
-// Each returns a score in [-1, 1] and an optional signal string.
 
 function scoreTokenCount(
   estimatedTokens: number,
@@ -71,15 +71,6 @@ function scoreQuestionComplexity(prompt: string): DimensionScore {
   return { name: "questionComplexity", score: 0, signal: null };
 }
 
-/**
- * Score agentic task indicators.
- * Returns agenticScore (0-1) based on keyword matches:
- * - 4+ matches = 1.0 (high agentic)
- * - 3 matches = 0.6 (moderate agentic, triggers auto-agentic mode)
- * - 1-2 matches = 0.2 (low agentic)
- *
- * Thresholds raised because common keywords were pruned from the list.
- */
 function scoreAgenticTask(
   text: string,
   keywords: string[],
@@ -96,7 +87,6 @@ function scoreAgenticTask(
     }
   }
 
-  // Threshold-based scoring (raised thresholds after keyword pruning)
   if (matchCount >= 4) {
     return {
       dimensionScore: {
@@ -141,12 +131,9 @@ export function classifyByRules(
   config: ScoringConfig,
 ): ScoringResult {
   const text = `${systemPrompt ?? ""} ${prompt}`.toLowerCase();
-  // User prompt only — used for reasoning markers (system prompt shouldn't influence complexity)
   const userText = prompt.toLowerCase();
 
-  // Score all 14 dimensions
   const dimensions: DimensionScore[] = [
-    // Original 8 dimensions
     scoreTokenCount(estimatedTokens, config.tokenCountThresholds),
     scoreKeywordMatch(
       text,
@@ -156,7 +143,6 @@ export function classifyByRules(
       { low: 1, high: 2 },
       { none: 0, low: 0.5, high: 1.0 },
     ),
-    // Reasoning markers use USER prompt only — system prompt "step by step" shouldn't trigger reasoning
     scoreKeywordMatch(
       userText,
       config.reasoningKeywords,
@@ -192,7 +178,6 @@ export function classifyByRules(
     scoreMultiStep(text),
     scoreQuestionComplexity(prompt),
 
-    // 6 new dimensions
     scoreKeywordMatch(
       text,
       config.imperativeVerbs,
@@ -243,15 +228,12 @@ export function classifyByRules(
     ),
   ];
 
-  // Score agentic task indicators
   const agenticResult = scoreAgenticTask(text, config.agenticTaskKeywords);
   dimensions.push(agenticResult.dimensionScore);
   const agenticScore = agenticResult.agenticScore;
 
-  // Collect signals
   const signals = dimensions.filter((d) => d.signal !== null).map((d) => d.signal!);
 
-  // Compute weighted score
   const weights = config.dimensionWeights;
   let weightedScore = 0;
   for (const d of dimensions) {
@@ -259,8 +241,6 @@ export function classifyByRules(
     weightedScore += d.score * w;
   }
 
-  // Count reasoning markers for override — only check USER prompt, not system prompt
-  // This prevents system prompts with "step by step" from triggering REASONING for simple queries
   const reasoningMatches = config.reasoningKeywords.filter((kw) =>
     userText.includes(kw.toLowerCase()),
   );
@@ -268,7 +248,7 @@ export function classifyByRules(
   // Direct reasoning override: 2+ reasoning markers = high confidence REASONING
   if (reasoningMatches.length >= 2) {
     const confidence = calibrateConfidence(
-      Math.max(weightedScore, 0.3), // ensure positive for confidence calc
+      Math.max(weightedScore, 0.3),
       config.confidenceSteepness,
     );
     return {
@@ -280,7 +260,6 @@ export function classifyByRules(
     };
   }
 
-  // Map weighted score to tier using boundaries
   const { simpleMedium, mediumComplex, complexReasoning } = config.tierBoundaries;
   let tier: Tier;
   let distanceFromBoundary: number;
@@ -302,10 +281,8 @@ export function classifyByRules(
     distanceFromBoundary = weightedScore - complexReasoning;
   }
 
-  // Calibrate confidence via sigmoid of distance from nearest boundary
   const confidence = calibrateConfidence(distanceFromBoundary, config.confidenceSteepness);
 
-  // If confidence is below threshold → ambiguous
   if (confidence < config.confidenceThreshold) {
     return { score: weightedScore, tier: null, confidence, signals, agenticScore };
   }

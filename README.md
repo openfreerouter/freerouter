@@ -1,6 +1,10 @@
-# FreeRouter — Smart Model Routing for OpenClaw
+# FreeRouter — Smart Model Routing for [OpenClaw](https://github.com/openclaw/openclaw)
 
-> **Forked from [BlockRunAI/ClawRouter](https://github.com/BlockRunAI/ClawRouter).** FreeRouter strips the x402 payment protocol and gives you the same powerful 14-dimension routing engine — free, open, using your own API keys.
+> 🔌 **Built for [OpenClaw](https://docs.openclaw.ai)** — the open-source AI agent framework. FreeRouter acts as a transparent routing proxy that sits between your OpenClaw gateway and AI providers (Anthropic, Kimi, OpenAI-compatible). It classifies each message by complexity and routes to the optimal model automatically.
+>
+> **Forked from [BlockRunAI/ClawRouter](https://github.com/BlockRunAI/ClawRouter).** Strips the x402 payment protocol, gives you the same powerful 14-dimension routing engine — free, open, using your own API keys.
+>
+> **Requirements:** [OpenClaw](https://github.com/openclaw/openclaw) gateway running. FreeRouter plugs in as a provider — OpenClaw sees one model (`freerouter/auto`), FreeRouter handles the rest.
 
 ## How Is This Different from ClawRouter?
 

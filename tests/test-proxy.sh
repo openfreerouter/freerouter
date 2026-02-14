@@ -123,6 +123,38 @@ for i in 1 2 3; do
 done
 $ALL_OK && pass "3 concurrent requests" || fail "concurrent requests"
 
+
+section "MODE OVERRIDES"
+# /max forces REASONING
+BODY='{"model":"auto","messages":[{"role":"user","content":"/max explain quicksort"}]}'
+RES=$(curl -s "$BASE/v1/chat/completions" -H "Content-Type: application/json" -d "$BODY" -D /tmp/fr-hdr-m1 2>/dev/null)
+MODE_TIER=$(grep -i 'x-clawrouter-tier' /tmp/fr-hdr-m1 | tr -d '\r\n' | sed 's/.*: //')
+[ "$MODE_TIER" = "REASONING" ] && pass "mode /max\u2192REASONING" || fail "mode /max\u2192REASONING" "$MODE_TIER"
+
+# "complex mode:" forces COMPLEX
+BODY='{"model":"auto","messages":[{"role":"user","content":"complex mode: what is 2+2"}]}'
+RES=$(curl -s "$BASE/v1/chat/completions" -H "Content-Type: application/json" -d "$BODY" -D /tmp/fr-hdr-m2 2>/dev/null)
+MODE_TIER=$(grep -i 'x-clawrouter-tier' /tmp/fr-hdr-m2 | tr -d '\r\n' | sed 's/.*: //')
+[ "$MODE_TIER" = "COMPLEX" ] && pass "mode complex\u2192COMPLEX" || fail "mode complex\u2192COMPLEX" "$MODE_TIER"
+
+# [simple] forces SIMPLE
+BODY='{"model":"auto","messages":[{"role":"user","content":"[simple] prove Riemann hypothesis"}]}'
+RES=$(curl -s "$BASE/v1/chat/completions" -H "Content-Type: application/json" -d "$BODY" -D /tmp/fr-hdr-m3 2>/dev/null)
+MODE_TIER=$(grep -i 'x-clawrouter-tier' /tmp/fr-hdr-m3 | tr -d '\r\n' | sed 's/.*: //')
+[ "$MODE_TIER" = "SIMPLE" ] && pass "mode [simple]\u2192SIMPLE" || fail "mode [simple]\u2192SIMPLE" "$MODE_TIER"
+
+# "deep mode," forces REASONING
+BODY='{"model":"auto","messages":[{"role":"user","content":"deep mode, what is 1+1"}]}'
+RES=$(curl -s "$BASE/v1/chat/completions" -H "Content-Type: application/json" -d "$BODY" -D /tmp/fr-hdr-m4 2>/dev/null)
+MODE_TIER=$(grep -i 'x-clawrouter-tier' /tmp/fr-hdr-m4 | tr -d '\r\n' | sed 's/.*: //')
+[ "$MODE_TIER" = "REASONING" ] && pass "mode deep\u2192REASONING" || fail "mode deep\u2192REASONING" "$MODE_TIER"
+
+# No mode prefix = normal classification
+BODY='{"model":"auto","messages":[{"role":"user","content":"hello"}]}'
+RES=$(curl -s "$BASE/v1/chat/completions" -H "Content-Type: application/json" -d "$BODY" -D /tmp/fr-hdr-m5 2>/dev/null)
+MODE_TIER=$(grep -i 'x-clawrouter-tier' /tmp/fr-hdr-m5 | tr -d '\r\n' | sed 's/.*: //')
+[ "$MODE_TIER" = "SIMPLE" ] && pass "no mode\u2192normal classify" || fail "no mode\u2192normal classify" "$MODE_TIER"
+
 echo ""
 echo "?????????????????????????????????????????????????????????????????????????????????????????????"
 echo "Results: $PASS passed, $FAIL failed (total $TOTAL)"

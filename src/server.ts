@@ -107,6 +107,63 @@ function extractPromptForClassification(messages: ChatRequest["messages"]): {
   return { prompt, systemPrompt };
 }
 
+
+/**
+ * Detect user-requested mode override in prompt text.
+ * Users can prefix or include mode directives to force a specific tier:
+ *   "simple mode: ..."  or  "/simple ..."   → SIMPLE
+ *   "medium mode: ..."  or  "/medium ..."   → MEDIUM  
+ *   "complex mode: ..." or  "/complex ..."  → COMPLEX
+ *   "max mode: ..."     or  "/max ..."      → REASONING
+ *   "reasoning mode: ..." or "/reasoning ..." → REASONING
+ * 
+ * Returns the forced tier and cleaned prompt (directive stripped), or null if no override.
+ */
+function detectModeOverride(prompt: string): { tier: string; cleanedPrompt: string } | null {
+  const modeMap: Record<string, string> = {
+    simple: "SIMPLE",
+    basic: "SIMPLE",
+    cheap: "SIMPLE",
+    medium: "MEDIUM",
+    balanced: "MEDIUM",
+    complex: "COMPLEX",
+    advanced: "COMPLEX",
+    max: "REASONING",
+    reasoning: "REASONING",
+    think: "REASONING",
+    deep: "REASONING",
+  };
+
+  // Pattern 1: "/mode ..." at start of message
+  const slashMatch = prompt.match(/^\/([a-z]+)\s+/i);
+  if (slashMatch) {
+    const mode = slashMatch[1].toLowerCase();
+    if (modeMap[mode]) {
+      return { tier: modeMap[mode], cleanedPrompt: prompt.slice(slashMatch[0].length).trim() };
+    }
+  }
+
+  // Pattern 2: "mode mode: ..." or "mode mode, ..." at start  
+  const prefixMatch = prompt.match(/^([a-z]+)\s+mode[:\s,]+/i);
+  if (prefixMatch) {
+    const mode = prefixMatch[1].toLowerCase();
+    if (modeMap[mode]) {
+      return { tier: modeMap[mode], cleanedPrompt: prompt.slice(prefixMatch[0].length).trim() };
+    }
+  }
+
+  // Pattern 3: "[mode]" at start
+  const bracketMatch = prompt.match(/^\[([a-z]+)\]\s*/i);
+  if (bracketMatch) {
+    const mode = bracketMatch[1].toLowerCase();
+    if (modeMap[mode]) {
+      return { tier: modeMap[mode], cleanedPrompt: prompt.slice(bracketMatch[0].length).trim() };
+    }
+  }
+
+  return null;
+}
+
 /**
  * Handle POST /v1/chat/completions
  */
@@ -145,17 +202,30 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse) 
   let reasoning: string;
 
   if (requestedModel === "auto" || requestedModel === "clawrouter/auto" || requestedModel === "blockrun/auto") {
-    // Run the classifier
-    const decision = route(prompt, systemPrompt, maxTokens, {
-      config: getRoutingConfig(),
-      modelPricing,
-    });
+    // Check for user mode override (e.g., "max mode: ...", "/complex ...", "[reasoning] ...")
+    const modeOverride = detectModeOverride(prompt);
+    
+    if (modeOverride) {
+      // User explicitly requested a tier — honor it
+      const routingCfg = getRoutingConfig();
+      const tierConfig = routingCfg.tiers[modeOverride.tier as keyof typeof routingCfg.tiers];
+      routedModel = tierConfig?.primary ?? "anthropic/claude-opus-4-6";
+      tier = modeOverride.tier;
+      reasoning = `user-mode: ${modeOverride.tier.toLowerCase()}`;
+      logger.info(`[${stats.requests + 1}] Mode override: tier=${tier} model=${routedModel} | ${reasoning}`);
+    } else {
+      // Run the classifier
+      const decision = route(prompt, systemPrompt, maxTokens, {
+        config: getRoutingConfig(),
+        modelPricing,
+      });
 
-    routedModel = decision.model;
-    tier = decision.tier;
-    reasoning = decision.reasoning;
+      routedModel = decision.model;
+      tier = decision.tier;
+      reasoning = decision.reasoning;
 
-    logger.info(`[${stats.requests + 1}] Classified: tier=${tier} model=${routedModel} confidence=${decision.confidence.toFixed(2)} | ${reasoning}`);
+      logger.info(`[${stats.requests + 1}] Classified: tier=${tier} model=${routedModel} confidence=${decision.confidence.toFixed(2)} | ${reasoning}`);
+    }
   } else {
     // Explicit model requested — pass through
     routedModel = requestedModel;

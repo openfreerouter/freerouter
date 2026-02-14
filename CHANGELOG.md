@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.3.0] — 2026-02-14
+
+### 🎛️ Mode Overrides — Take Control When You Want It
+
+#### Mode Override Prefixes
+Users can now force a specific routing tier by prefixing their prompt. The directive is stripped before forwarding to the LLM.
+
+**Three syntax styles supported:**
+- **Slash:** `/simple`, `/medium`, `/complex`, `/max`, `/reasoning`, `/think`, `/deep`, `/basic`, `/cheap`, `/balanced`, `/advanced`
+- **Word prefix:** `complex mode: ...`, `deep mode, ...`
+- **Bracket:** `[reasoning] ...`, `[simple] ...`
+
+When no prefix is detected, falls back to normal 14-dimension classification — fully backward compatible.
+
+#### Alias Mapping
+| Input | Routes to |
+|-------|-----------|
+| `/simple`, `/basic`, `/cheap` | SIMPLE |
+| `/medium`, `/balanced` | MEDIUM |
+| `/complex`, `/advanced` | COMPLEX |
+| `/max`, `/reasoning`, `/think`, `/deep` | REASONING |
+
+#### Tests
+- 5 new mode override tests added
+- **75/75 tests passing** (up from 70/70)
+
+---
+
 ## [1.2.0] — 2026-02-14
 
 ### 🔧 External Config + Reliability Improvements

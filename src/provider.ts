@@ -5,8 +5,30 @@
  */
 
 import { getAuth } from "./auth.js";
+import { getConfig, toInternalApiType, supportsAdaptiveThinking as configSupportsAdaptive, getThinkingBudget } from "./config.js";
 import { logger } from "./logger.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
+// --- Timeout Configuration ---
+const TIER_TIMEOUTS: Record<string, number> = {
+  SIMPLE: 30_000,
+  MEDIUM: 60_000,
+  COMPLEX: 120_000,
+  REASONING: 120_000,
+  EXPLICIT: 120_000,
+};
+const STREAM_STALL_TIMEOUT = 30_000;
+
+function getTierTimeout(tier: string): number {
+  return TIER_TIMEOUTS[tier] ?? 60_000;
+}
+
+export class TimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TimeoutError";
+  }
+}
+
 
 // Provider configs loaded from openclaw.json
 export type ProviderConfig = {
@@ -54,23 +76,21 @@ export type ChatRequest = {
   tool_choice?: unknown;
 };
 
-// Hard-coded provider configs (from openclaw.json)
-const PROVIDERS: Record<string, ProviderConfig> = {
-  anthropic: {
-    baseUrl: "https://api.anthropic.com",
-    api: "anthropic-messages",
-    headers: {
-      "anthropic-version": "2023-06-01",
-    },
-  },
-  "kimi-coding": {
-    baseUrl: "https://api.kimi.com/coding/v1",
-    api: "openai-completions",
-    headers: {
-      "User-Agent": "KimiCLI/0.77",
-    },
-  },
-};
+// Provider configs — loaded from freerouter.config.json via getProviderConfig()
+
+/**
+ * Get provider config from the loaded config file.
+ */
+function getProviderConfig(provider: string): ProviderConfig | undefined {
+  const cfg = getConfig();
+  const entry = cfg.providers[provider];
+  if (!entry) return undefined;
+  return {
+    baseUrl: entry.baseUrl,
+    api: toInternalApiType(entry.api),
+    headers: entry.headers,
+  };
+}
 
 /**
  * Parse a routed model ID like "anthropic/claude-opus-4-6" into provider + model parts.
@@ -191,6 +211,37 @@ function convertMessagesToAnthropic(
   return { system: systemContent, messages };
 }
 
+
+/**
+ * Read a stream with stall detection. Aborts if no data for STREAM_STALL_TIMEOUT.
+ */
+async function readStreamWithStallDetection(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  onChunk: (value: Uint8Array) => void,
+  abortController: AbortController,
+): Promise<void> {
+  while (true) {
+    let stallTimerId: ReturnType<typeof setTimeout> | undefined;
+    const stallPromise = new Promise<never>((_, reject) => {
+      stallTimerId = setTimeout(() => {
+        abortController.abort();
+        reject(new TimeoutError(`Stream stalled: no data for ${STREAM_STALL_TIMEOUT / 1000}s`));
+      }, STREAM_STALL_TIMEOUT);
+    });
+
+    try {
+      const result = await Promise.race([reader.read(), stallPromise]);
+      clearTimeout(stallTimerId);
+      const { done, value } = result as ReadableStreamReadResult<Uint8Array>;
+      if (done) break;
+      if (value) onChunk(value);
+    } catch (err) {
+      clearTimeout(stallTimerId);
+      throw err;
+    }
+  }
+}
+
 /**
  * Forward a chat request to Anthropic Messages API, streaming back as OpenAI SSE.
  */
@@ -204,7 +255,8 @@ async function forwardToAnthropic(
   const auth = getAuth("anthropic");
   if (!auth?.token) throw new Error("No Anthropic auth token");
 
-  const config = PROVIDERS.anthropic;
+  const config = getProviderConfig("anthropic");
+  if (!config) throw new Error("Anthropic provider not configured");
   const { system: systemContent, messages } = convertMessagesToAnthropic(req.messages);
 
   const isOAuth = auth.token!.startsWith("sk-ant-oat");
@@ -256,7 +308,8 @@ async function forwardToAnthropic(
   }
 
   const url = `${config.baseUrl}/v1/messages`;
-  logger.info(`-> Anthropic: ${modelName} (tier=${tier}, thinking=${thinkingConfig?.type ?? "off"}, stream=${stream}, tools=${req.tools?.length ?? 0})`);
+  const timeoutMs = getTierTimeout(tier);
+  logger.info(`-> Anthropic: ${modelName} (tier=${tier}, thinking=${thinkingConfig?.type ?? "off"}, stream=${stream}, tools=${req.tools?.length ?? 0}, timeout=${timeoutMs / 1000}s)`);
 
   const authHeaders: Record<string, string> = {
     "Content-Type": "application/json",
@@ -274,19 +327,36 @@ async function forwardToAnthropic(
     authHeaders["x-api-key"] = auth.token!;
   }
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: authHeaders,
-    body: JSON.stringify(body),
-  });
+  // Timeout via AbortController
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify(body),
+      signal: abortController.signal,
+    });
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err?.name === "AbortError" || abortController.signal.aborted) {
+      logger.error(`\u23f1 TIMEOUT: Anthropic ${modelName} after ${timeoutMs / 1000}s (tier=${tier})`);
+      throw new TimeoutError(`Anthropic request timed out after ${timeoutMs / 1000}s (model=${modelName}, tier=${tier})`);
+    }
+    throw err;
+  }
 
   if (!response.ok) {
+    clearTimeout(timeoutId);
     const errText = await response.text();
     logger.error(`Anthropic ${response.status}: ${errText}`);
     throw new Error(`Anthropic API error ${response.status}: ${errText}`);
   }
 
   if (!stream) {
+    clearTimeout(timeoutId);
     const data = await response.json() as {
       content: Array<{ type: string; text?: string; thinking?: string; id?: string; name?: string; input?: unknown }>;
       usage?: { input_tokens: number; output_tokens: number };
@@ -342,6 +412,7 @@ async function forwardToAnthropic(
     "Connection": "keep-alive",
   });
 
+  clearTimeout(timeoutId); // Stall detection takes over for streaming
   const reader = response.body?.getReader();
   if (!reader) throw new Error("No response body");
 
@@ -362,10 +433,7 @@ async function forwardToAnthropic(
   });
 
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
+    await readStreamWithStallDetection(reader, (value) => {
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
@@ -444,7 +512,12 @@ async function forwardToAnthropic(
           // skip unparseable lines
         }
       }
+    }, abortController);
+  } catch (err) {
+    if (err instanceof TimeoutError) {
+      logger.error(`\u23f1 STREAM STALL: Anthropic ${modelName} - ${(err as Error).message}`);
     }
+    throw err;
   } finally {
     res.write("data: [DONE]\n\n");
     res.end();
@@ -465,7 +538,7 @@ async function forwardToOpenAI(
   const auth = getAuth(provider);
   if (!auth?.apiKey) throw new Error(`No API key for ${provider}`);
 
-  const config = PROVIDERS[provider];
+  const config = getProviderConfig(provider);
   if (!config) throw new Error(`Unknown provider: ${provider}`);
 
   const body: Record<string, unknown> = {
@@ -487,17 +560,35 @@ async function forwardToOpenAI(
     ...config.headers,
   };
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
+  const timeoutMs = getTierTimeout(tier);
+  const abortController = new AbortController();
+  const timeoutId = setTimeout(() => abortController.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal: abortController.signal,
+    });
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err?.name === "AbortError" || abortController.signal.aborted) {
+      logger.error(`\u23f1 TIMEOUT: ${provider} ${modelName} after ${timeoutMs / 1000}s (tier=${tier})`);
+      throw new TimeoutError(`${provider} request timed out after ${timeoutMs / 1000}s (model=${modelName}, tier=${tier})`);
+    }
+    throw err;
+  }
 
   if (!response.ok) {
+    clearTimeout(timeoutId);
     const errText = await response.text();
     logger.error(`${provider} ${response.status}: ${errText}`);
     throw new Error(`${provider} API error ${response.status}: ${errText}`);
   }
+
+  clearTimeout(timeoutId);
 
   if (!stream) {
     const data = await response.json() as Record<string, unknown>;
@@ -521,10 +612,7 @@ async function forwardToOpenAI(
   let buffer = "";
 
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
+    await readStreamWithStallDetection(reader, (value) => {
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
@@ -549,7 +637,12 @@ async function forwardToOpenAI(
           res.write("\n");
         }
       }
+    }, abortController);
+  } catch (err) {
+    if (err instanceof TimeoutError) {
+      logger.error(`\u23f1 STREAM STALL: ${provider} ${modelName} - ${(err as Error).message}`);
     }
+    throw err;
   } finally {
     if (!res.writableEnded) {
       res.write("data: [DONE]\n\n");
@@ -570,7 +663,7 @@ export async function forwardRequest(
 ): Promise<void> {
   const { provider, model } = parseModelId(routedModel);
 
-  const providerConfig = PROVIDERS[provider];
+  const providerConfig = getProviderConfig(provider);
   if (!providerConfig) {
     throw new Error(`Unsupported provider: ${provider}`);
   }

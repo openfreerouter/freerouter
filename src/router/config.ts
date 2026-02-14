@@ -13,6 +13,7 @@
  */
 
 import type { RoutingConfig } from "./types.js";
+import { getConfig } from "../config.js";
 
 export const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
   version: "2.0-direct",
@@ -208,3 +209,34 @@ export const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
     agenticMode: false,
   },
 };
+
+
+/**
+ * Get the effective routing config, merging external config overrides.
+ * External config can override: tiers, agenticTiers, tierBoundaries.
+ * Scoring weights and keywords remain as coded defaults (advanced users edit source).
+ */
+export function getRoutingConfig(): RoutingConfig {
+  const extCfg = getConfig();
+  const config = { ...DEFAULT_ROUTING_CONFIG };
+
+  // Override tiers from external config
+  if (extCfg.tiers) {
+    config.tiers = extCfg.tiers as RoutingConfig["tiers"];
+  }
+
+  // Override agentic tiers
+  if (extCfg.agenticTiers) {
+    config.agenticTiers = extCfg.agenticTiers as RoutingConfig["agenticTiers"];
+  }
+
+  // Override tier boundaries
+  if (extCfg.tierBoundaries) {
+    config.scoring = {
+      ...config.scoring,
+      tierBoundaries: extCfg.tierBoundaries,
+    };
+  }
+
+  return config;
+}

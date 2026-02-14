@@ -3,7 +3,8 @@
  * Zero-dep, reads from ~/.openclaw/agents/main/agent/auth-profiles.json
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
+import { getConfig } from "./config.js";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { logger } from "./logger.js";
@@ -29,7 +30,17 @@ type AuthProfilesFile = {
 let authCache: Map<string, ProviderAuth> | null = null;
 
 function loadAuthProfiles(): Map<string, ProviderAuth> {
-  const filePath = join(homedir(), ".openclaw", "agents", "main", "agent", "auth-profiles.json");
+  // Get path from config, fall back to default
+  const cfg = getConfig();
+  const authCfg = cfg.auth;
+  const defaultAuth = authCfg[authCfg.default] as { type?: string; profilesPath?: string } | undefined;
+  let filePath: string;
+  if (defaultAuth?.profilesPath) {
+    const p = defaultAuth.profilesPath;
+    filePath = p.startsWith("~/") ? join(homedir(), p.slice(2)) : p;
+  } else {
+    filePath = join(homedir(), ".openclaw", "agents", "main", "agent", "auth-profiles.json");
+  }
   try {
     const raw = readFileSync(filePath, "utf-8");
     const data: AuthProfilesFile = JSON.parse(raw);
@@ -63,10 +74,35 @@ function loadAuthProfiles(): Map<string, ProviderAuth> {
 }
 
 export function getAuth(provider: string): ProviderAuth | undefined {
+  // Check env var auth first (per-provider config override)
+  const envAuth = getEnvAuth(provider);
+  if (envAuth) return envAuth;
+
+  // Fall back to auth-profiles.json
   if (!authCache) {
     authCache = loadAuthProfiles();
   }
   return authCache.get(provider);
+}
+
+
+
+/**
+ * Get auth from environment variable (for providers with auth.type=env in config).
+ */
+function getEnvAuth(provider: string): ProviderAuth | undefined {
+  const cfg = getConfig();
+  const providerCfg = cfg.providers[provider];
+  if (!providerCfg?.auth || providerCfg.auth.type !== "env") return undefined;
+  const envKey = providerCfg.auth.key;
+  if (!envKey) return undefined;
+  const value = process.env[envKey];
+  if (!value) return undefined;
+  return {
+    provider,
+    profileName: envKey,
+    apiKey: value,
+  };
 }
 
 export function reloadAuth(): void {

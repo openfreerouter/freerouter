@@ -32,12 +32,14 @@ export function route(
 ): RoutingDecision {
   const { config, modelPricing } = options;
 
-  // Estimate input tokens (~4 chars per token)
-  const fullText = `${systemPrompt ?? ""} ${prompt}`;
-  const estimatedTokens = Math.ceil(fullText.length / 4);
+  // Separate token counts: user prompt for complexity, total for context limits
+  // WHY: System prompts (AGENTS.md, SOUL.md) inflate token count — a "hello" with
+  // 10K system prompt shouldn't route to Opus. But total tokens still matter for context.
+  const estimatedUserTokens = Math.ceil(prompt.length / 4);
+  const estimatedTotalTokens = Math.ceil((`${systemPrompt ?? ""} ${prompt}`).length / 4);
 
   // --- Rule-based classification ---
-  const ruleResult = classifyByRules(prompt, systemPrompt, estimatedTokens, config.scoring);
+  const ruleResult = classifyByRules(prompt, systemPrompt, estimatedUserTokens, config.scoring);
 
   // Determine if agentic tiers should be used
   const agenticScore = ruleResult.agenticScore ?? 0;
@@ -47,7 +49,7 @@ export function route(
   const tierConfigs = useAgenticTiers ? config.agenticTiers! : config.tiers;
 
   // --- Override: large context → force COMPLEX ---
-  if (estimatedTokens > config.overrides.maxTokensForceComplex) {
+  if (estimatedTotalTokens > config.overrides.maxTokensForceComplex) {
     return selectModel(
       "COMPLEX",
       0.95,
@@ -55,13 +57,14 @@ export function route(
       `Input exceeds ${config.overrides.maxTokensForceComplex} tokens${useAgenticTiers ? " | agentic" : ""}`,
       tierConfigs,
       modelPricing,
-      estimatedTokens,
+      estimatedTotalTokens,
       maxOutputTokens,
     );
   }
 
   // Structured output detection
-  const hasStructuredOutput = systemPrompt ? /json|structured|schema/i.test(systemPrompt) : false;
+  // Only check user prompt for structured output request (system prompts often mention "json")
+  const hasStructuredOutput = /json|structured|schema/i.test(prompt);
 
   let tier: Tier;
   let confidence: number;
@@ -100,7 +103,7 @@ export function route(
     reasoning,
     tierConfigs,
     modelPricing,
-    estimatedTokens,
+    estimatedTotalTokens,
     maxOutputTokens,
   );
 }

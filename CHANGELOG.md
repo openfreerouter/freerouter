@@ -1,5 +1,46 @@
 # Changelog
 
+## [1.2.0] — 2026-02-14
+
+### 🔧 External Config + Reliability Improvements
+
+#### Config-Driven Architecture
+- **New: `freerouter.config.json`** — all providers, tiers, boundaries, thinking, and auth are now configurable without editing source code
+- **New: `src/config.ts`** — config loader with file search priority: `FREEROUTER_CONFIG` env → `./freerouter.config.json` → `~/.config/freerouter/config.json`
+- Deep-merges file config over built-in defaults — fully backward compatible (works without config file)
+- New `/config` endpoint — view current config with secrets redacted
+- New `/reload-config` endpoint — reload config without restarting the proxy
+- Auth types: `openclaw` (reads auth-profiles.json), `env` (environment variables), per-provider overrides
+
+#### Reliability
+- **Request timeouts** — `AbortSignal.timeout()` per tier: SIMPLE 30s, MEDIUM 60s, COMPLEX/REASONING 120s
+- **Streaming stall detection** — aborts if no data received for 30s mid-stream
+- **Auto-fallback on timeout** — if primary model times out, fallback model is tried automatically
+- **Timeout counter** — visible in `/health` and `/stats` responses
+- **`TimeoutError` class** — clean error identification for fallback logic
+
+#### Smarter Classification
+- **Token estimation fix** — complexity scoring now uses user prompt length only (not system+user). Long system prompts (AGENTS.md, SOUL.md) no longer inflate complexity scores. A "hello" with a 40K system prompt correctly routes to SIMPLE, not COMPLEX
+- **Structured output fix** — detection now checks user prompt only. System prompts mentioning "json" no longer force tier upgrades
+- Total token count still used for context window checks (large input → force COMPLEX)
+
+#### Provider Configuration
+- Providers defined in config with `baseUrl`, `api` type (`"anthropic"` or `"openai"`), optional `headers`
+- Any OpenAI-compatible provider works out of the box — just add baseUrl + API key
+- Anthropic gets automatic format translation (tool calls, streaming, thinking)
+- Thinking config is now data-driven: specify which models support adaptive thinking and budget amounts
+
+### Migration
+No action needed — if no `freerouter.config.json` exists, all previous defaults apply. To customize:
+
+```bash
+cp freerouter.config.json ~/.config/freerouter/config.json
+# Edit providers, tiers, boundaries to taste
+curl http://localhost:18800/reload-config  # Apply without restart
+```
+
+---
+
 ## [1.0.0] — 2026-02-14
 
 ### 🚀 First Full Release — Proxy Server + Smart Routing

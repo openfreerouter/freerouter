@@ -13,14 +13,18 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { route, DEFAULT_ROUTING_CONFIG } from "./router/index.js";
+import { route } from "./router/index.js";
+import { getRoutingConfig } from "./router/config.js";
 import { buildPricingMap } from "./models.js";
-import { forwardRequest, type ChatRequest } from "./provider.js";
+import { forwardRequest, TimeoutError, type ChatRequest } from "./provider.js";
 import { reloadAuth } from "./auth.js";
+import { loadConfig, getConfig, reloadConfig, getSanitizedConfig, getConfigPath } from "./config.js";
 import { logger, setLogLevel } from "./logger.js";
 
-const PORT = parseInt(process.env.CLAWROUTER_PORT ?? "18800", 10);
-const HOST = process.env.CLAWROUTER_HOST ?? "127.0.0.1";
+// Load config at startup
+const appConfig = loadConfig();
+const PORT = parseInt(process.env.CLAWROUTER_PORT ?? String(appConfig.port), 10);
+const HOST = process.env.CLAWROUTER_HOST ?? appConfig.host ?? "127.0.0.1";
 
 // Build pricing map once at startup
 const modelPricing = buildPricingMap();
@@ -30,6 +34,7 @@ const stats = {
   started: new Date().toISOString(),
   requests: 0,
   errors: 0,
+  timeouts: 0,
   byTier: { SIMPLE: 0, MEDIUM: 0, COMPLEX: 0, REASONING: 0 } as Record<string, number>,
   byModel: {} as Record<string, number>,
 };
@@ -142,7 +147,7 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse) 
   if (requestedModel === "auto" || requestedModel === "clawrouter/auto" || requestedModel === "blockrun/auto") {
     // Run the classifier
     const decision = route(prompt, systemPrompt, maxTokens, {
-      config: DEFAULT_ROUTING_CONFIG,
+      config: getRoutingConfig(),
       modelPricing,
     });
 
@@ -172,7 +177,8 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse) 
   // Build model list: primary + fallbacks
   const modelsToTry: string[] = [routedModel];
   if (tier !== "EXPLICIT") {
-    const tierConfig = DEFAULT_ROUTING_CONFIG.tiers[tier as keyof typeof DEFAULT_ROUTING_CONFIG.tiers];
+    const routingCfg = getRoutingConfig();
+    const tierConfig = routingCfg.tiers[tier as keyof typeof routingCfg.tiers];
     if (tierConfig?.fallback) {
       for (const fb of tierConfig.fallback) {
         if (fb !== routedModel) modelsToTry.push(fb);
@@ -191,7 +197,13 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse) 
       return; // success
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
-      logger.error(`Forward error (${modelToTry}): ${lastError}`);
+      const isTimeout = err instanceof TimeoutError;
+      if (isTimeout) {
+        stats.timeouts++;
+        logger.error(`\u23f1 TIMEOUT (${modelToTry}): ${lastError} — trying fallback...`);
+      } else {
+        logger.error(`Forward error (${modelToTry}): ${lastError}`);
+      }
       if (res.headersSent) break; // can't retry if already streaming
     }
   }
@@ -255,7 +267,7 @@ function handleHealth(_req: IncomingMessage, res: ServerResponse) {
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify({
     status: "ok",
-    version: "1.0.0",
+    version: "1.1.0",
     uptime: process.uptime(),
     stats,
   }));
@@ -269,10 +281,39 @@ function handleStats(_req: IncomingMessage, res: ServerResponse) {
   res.end(JSON.stringify(stats, null, 2));
 }
 
+
+/**
+ * Handle GET /config — show sanitized config (no secrets)
+ */
+function handleConfig(_req: IncomingMessage, res: ServerResponse) {
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({
+    configPath: getConfigPath(),
+    config: getSanitizedConfig(),
+  }, null, 2));
+}
+
+/**
+ * Handle POST /reload-config — reload config + auth without restart
+ */
+function handleReloadConfig(_req: IncomingMessage, res: ServerResponse) {
+  reloadConfig();
+  reloadAuth();
+  const cfg = getConfig();
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({
+    status: "reloaded",
+    configPath: getConfigPath(),
+    providers: Object.keys(cfg.providers),
+    tiers: Object.keys(cfg.tiers),
+  }));
+}
+
 /**
  * Handle POST /reload
  */
 function handleReload(_req: IncomingMessage, res: ServerResponse) {
+  reloadConfig();
   reloadAuth();
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ status: "reloaded" }));
@@ -307,6 +348,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       handleStats(req, res);
     } else if (method === "POST" && url === "/reload") {
       handleReload(req, res);
+    } else if (method === "GET" && url === "/config") {
+      handleConfig(req, res);
+    } else if (method === "POST" && url === "/reload-config") {
+      handleReloadConfig(req, res);
     } else {
       sendError(res, 404, `Not found: ${method} ${url}`, "not_found");
     }
@@ -328,12 +373,14 @@ if (process.argv.includes("--debug")) {
 const server = createServer(handleRequest);
 
 server.listen(PORT, HOST, () => {
-  logger.info(`🚀 ClawRouter proxy listening on http://${HOST}:${PORT}`);
+  logger.info(`🚀 ClawRouter proxy listening on http://${HOST}:${PORT} (config: ${getConfigPath() ?? "built-in defaults"})`);
   logger.info(`   POST /v1/chat/completions  — route & forward`);
   logger.info(`   GET  /v1/models            — list models`);
   logger.info(`   GET  /health               — health check`);
   logger.info(`   GET  /stats                — request statistics`);
   logger.info(`   POST /reload               — reload auth keys`);
+  logger.info(`   GET  /config               — show config (sanitized)`);
+  logger.info(`   POST /reload-config         — reload config + auth`);
 });
 
 // Graceful shutdown

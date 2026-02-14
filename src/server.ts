@@ -71,7 +71,7 @@ function extractPromptForClassification(messages: ChatRequest["messages"]): {
   for (const msg of messages) {
     const text = typeof msg.content === "string"
       ? msg.content
-      : msg.content.filter(b => b.type === "text").map(b => b.text ?? "").join("\n");
+      : (msg.content ?? []).filter(b => b.type === "text").map(b => b.text ?? "").join("\n");
 
     if (msg.role === "system" || msg.role === "developer") {
       systemPrompt = (systemPrompt ? systemPrompt + "\n" : "") + text;
@@ -113,6 +113,10 @@ async function handleChatCompletions(req: IncomingMessage, res: ServerResponse) 
     chatReq = JSON.parse(bodyStr);
   } catch {
     return sendError(res, 400, "Invalid JSON body");
+  }
+
+  if (!chatReq.model) {
+    return sendError(res, 400, "model field is required");
   }
 
   if (!chatReq.messages || !Array.isArray(chatReq.messages) || chatReq.messages.length === 0) {

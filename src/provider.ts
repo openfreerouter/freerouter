@@ -1,7 +1,7 @@
 /**
- * ClawRouter Provider — handles forwarding to backend APIs
+ * ClawRouter Provider â€” handles forwarding to backend APIs
  * Supports: Anthropic Messages API, OpenAI-compatible (Kimi, OpenAI)
- * Zero external deps — uses native fetch + streams.
+ * Zero external deps â€” uses native fetch + streams.
  */
 
 import { getAuth } from "./auth.js";
@@ -15,10 +15,31 @@ export type ProviderConfig = {
   headers?: Record<string, string>;
 };
 
+// OpenAI tool types
+export type OpenAIFunction = {
+  name: string;
+  description?: string;
+  parameters?: Record<string, unknown>;
+};
+
+export type OpenAITool = {
+  type: "function";
+  function: OpenAIFunction;
+};
+
+export type OpenAIToolCall = {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+};
+
 // OpenAI-format message
 export type ChatMessage = {
-  role: "system" | "user" | "assistant" | "developer";
-  content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>;
+  role: "system" | "user" | "assistant" | "developer" | "tool";
+  content: string | null | Array<{ type: string; text?: string; image_url?: { url: string } }>;
+  tool_calls?: OpenAIToolCall[];
+  tool_call_id?: string;
+  name?: string;
 };
 
 export type ChatRequest = {
@@ -29,6 +50,8 @@ export type ChatRequest = {
   stream?: boolean;
   top_p?: number;
   stop?: string[];
+  tools?: OpenAITool[];
+  tool_choice?: unknown;
 };
 
 // Hard-coded provider configs (from openclaw.json)
@@ -67,22 +90,105 @@ function supportsAdaptiveThinking(modelId: string): boolean {
 
 /**
  * Get thinking config based on tier and model.
- * Opus 4.6+ uses adaptive thinking with effort levels.
- * Other models use budget-based thinking.
  */
 function getThinkingConfig(tier: string, modelId: string): { type: string; budget_tokens?: number; effort?: string } | undefined {
-  // Opus 4.6+ uses adaptive thinking — model decides how much to think (per Anthropic docs)
   if (supportsAdaptiveThinking(modelId) && (tier === "COMPLEX" || tier === "REASONING")) {
     return { type: "adaptive" };
   }
-
-  // Sonnet/Haiku: MEDIUM gets thinking enabled with high budget
   if (tier === "MEDIUM") {
     return { type: "enabled", budget_tokens: 4096 };
   }
-
-  // SIMPLE (Kimi/Haiku): no thinking
   return undefined;
+}
+
+/** Convert OpenAI tools to Anthropic tools format */
+function convertToolsToAnthropic(tools: OpenAITool[]): Array<{ name: string; description?: string; input_schema: Record<string, unknown> }> {
+  return tools.map(t => ({
+    name: t.function.name,
+    ...(t.function.description ? { description: t.function.description } : {}),
+    input_schema: t.function.parameters ?? { type: "object", properties: {} },
+  }));
+}
+
+/** Convert OpenAI tool_choice to Anthropic tool_choice format */
+function convertToolChoiceToAnthropic(toolChoice: unknown): { type: string; name?: string } | undefined {
+  if (toolChoice === "none") return { type: "none" };
+  if (toolChoice === "auto" || toolChoice === undefined) return { type: "auto" };
+  if (toolChoice === "required") return { type: "any" };
+  if (typeof toolChoice === "object" && toolChoice !== null) {
+    const tc = toolChoice as { type?: string; function?: { name: string } };
+    if (tc.function?.name) return { type: "tool", name: tc.function.name };
+  }
+  return { type: "auto" };
+}
+
+/**
+ * Convert OpenAI messages array to Anthropic messages format.
+ * Handles system extraction, tool_calls, tool results, and content merging.
+ */
+function convertMessagesToAnthropic(
+  openaiMessages: ChatMessage[]
+): { system: string; messages: Array<{ role: string; content: unknown }> } {
+  let systemContent = "";
+  const messages: Array<{ role: string; content: unknown }> = [];
+
+  for (let i = 0; i < openaiMessages.length; i++) {
+    const msg = openaiMessages[i];
+
+    // Extract system/developer messages
+    if (msg.role === "system" || msg.role === "developer") {
+      const text = typeof msg.content === "string"
+        ? msg.content
+        : (msg.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n");
+      systemContent += (systemContent ? "\n" : "") + text;
+      continue;
+    }
+
+    // Tool role -> tool_result content block (wrapped in user message)
+    if (msg.role === "tool") {
+      const toolResult = {
+        type: "tool_result" as const,
+        tool_use_id: msg.tool_call_id ?? "",
+        content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content ?? ""),
+      };
+      // Merge with previous user message if it only has tool_results
+      const last = messages[messages.length - 1];
+      if (last && last.role === "user" && Array.isArray(last.content) &&
+          (last.content as any[]).every((b: any) => b.type === "tool_result")) {
+        (last.content as any[]).push(toolResult);
+      } else {
+        messages.push({ role: "user", content: [toolResult] });
+      }
+      continue;
+    }
+
+    // Assistant with tool_calls -> content blocks with tool_use
+    if (msg.role === "assistant" && msg.tool_calls && msg.tool_calls.length > 0) {
+      const contentBlocks: Array<Record<string, unknown>> = [];
+      // Include text content first
+      if (msg.content) {
+        const text = typeof msg.content === "string" ? msg.content
+          : msg.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
+        if (text) contentBlocks.push({ type: "text", text });
+      }
+      // Add tool_use blocks
+      for (const tc of msg.tool_calls) {
+        let input: unknown = {};
+        try { input = JSON.parse(tc.function.arguments); } catch { input = {}; }
+        contentBlocks.push({ type: "tool_use", id: tc.id, name: tc.function.name, input });
+      }
+      messages.push({ role: "assistant", content: contentBlocks });
+      continue;
+    }
+
+    // Regular user/assistant messages
+    const text = typeof msg.content === "string"
+      ? msg.content
+      : (msg.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n");
+    messages.push({ role: msg.role === "assistant" ? "assistant" : "user", content: text || "" });
+  }
+
+  return { system: systemContent, messages };
 }
 
 /**
@@ -99,22 +205,7 @@ async function forwardToAnthropic(
   if (!auth?.token) throw new Error("No Anthropic auth token");
 
   const config = PROVIDERS.anthropic;
-
-  // Convert OpenAI messages to Anthropic format
-  let systemContent = "";
-  const messages: Array<{ role: string; content: string }> = [];
-
-  for (const msg of req.messages) {
-    const text = typeof msg.content === "string"
-      ? msg.content
-      : msg.content.filter(b => b.type === "text").map(b => b.text).join("\n");
-
-    if (msg.role === "system" || msg.role === "developer") {
-      systemContent += (systemContent ? "\n" : "") + text;
-    } else {
-      messages.push({ role: msg.role, content: text });
-    }
-  }
+  const { system: systemContent, messages } = convertMessagesToAnthropic(req.messages);
 
   const isOAuth = auth.token!.startsWith("sk-ant-oat");
   const thinkingConfig = getThinkingConfig(tier, modelName);
@@ -127,7 +218,15 @@ async function forwardToAnthropic(
     stream: stream,
   };
 
-  // System prompt: for OAuth, MUST include Claude Code identity (per OpenClaw pi-ai source)
+  // Add tools if present
+  if (req.tools && req.tools.length > 0) {
+    body.tools = convertToolsToAnthropic(req.tools);
+    if (req.tool_choice !== undefined) {
+      body.tool_choice = convertToolChoiceToAnthropic(req.tool_choice);
+    }
+  }
+
+  // System prompt
   if (isOAuth) {
     const systemBlocks: Array<{ type: string; text: string; cache_control?: { type: string } }> = [
       {
@@ -137,11 +236,7 @@ async function forwardToAnthropic(
       },
     ];
     if (systemContent) {
-      systemBlocks.push({
-        type: "text",
-        text: systemContent,
-        cache_control: { type: "ephemeral" },
-      });
+      systemBlocks.push({ type: "text", text: systemContent, cache_control: { type: "ephemeral" } });
     }
     body.system = systemBlocks;
   } else if (systemContent) {
@@ -152,10 +247,7 @@ async function forwardToAnthropic(
     if (thinkingConfig.type === "adaptive") {
       body.thinking = { type: "adaptive" };
     } else {
-      body.thinking = {
-        type: "enabled",
-        budget_tokens: thinkingConfig.budget_tokens,
-      };
+      body.thinking = { type: "enabled", budget_tokens: thinkingConfig.budget_tokens };
     }
   }
 
@@ -164,7 +256,7 @@ async function forwardToAnthropic(
   }
 
   const url = `${config.baseUrl}/v1/messages`;
-  logger.info(`→ Anthropic: ${modelName} (tier=${tier}, thinking=${thinkingConfig?.type ?? "off"}, stream=${stream})`);
+  logger.info(`-> Anthropic: ${modelName} (tier=${tier}, thinking=${thinkingConfig?.type ?? "off"}, stream=${stream}, tools=${req.tools?.length ?? 0})`);
 
   const authHeaders: Record<string, string> = {
     "Content-Type": "application/json",
@@ -173,7 +265,6 @@ async function forwardToAnthropic(
   };
 
   if (isOAuth) {
-    // OAuth tokens require Bearer auth + special beta headers (discovered from OpenClaw source)
     authHeaders["Authorization"] = `Bearer ${auth.token}`;
     authHeaders["anthropic-beta"] = "claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14,interleaved-thinking-2025-05-14";
     authHeaders["user-agent"] = "claude-cli/2.1.2 (external, cli)";
@@ -196,29 +287,42 @@ async function forwardToAnthropic(
   }
 
   if (!stream) {
-    // Non-streaming: convert Anthropic response to OpenAI format
     const data = await response.json() as {
-      content: Array<{ type: string; text?: string; thinking?: string }>;
+      content: Array<{ type: string; text?: string; thinking?: string; id?: string; name?: string; input?: unknown }>;
       usage?: { input_tokens: number; output_tokens: number };
       model: string;
       stop_reason?: string;
     };
 
     const textContent = data.content
-      .filter((b: { type: string }) => b.type === "text")
-      .map((b: { text?: string }) => b.text ?? "")
+      .filter((b) => b.type === "text")
+      .map((b) => b.text ?? "")
       .join("");
+
+    // Convert tool_use blocks to OpenAI tool_calls
+    const toolUseBlocks = data.content.filter((b) => b.type === "tool_use");
+    const toolCalls: OpenAIToolCall[] = toolUseBlocks.map((b, idx) => ({
+      id: b.id ?? `call_${Date.now()}_${idx}`,
+      type: "function" as const,
+      function: { name: b.name ?? "", arguments: JSON.stringify(b.input ?? {}) },
+    }));
+
+    const finishReason = data.stop_reason === "tool_use" ? "tool_calls"
+      : data.stop_reason === "end_turn" ? "stop"
+      : (data.stop_reason ?? "stop");
+
+    const message: Record<string, unknown> = {
+      role: "assistant",
+      content: textContent || (toolCalls.length > 0 ? null : ""),
+    };
+    if (toolCalls.length > 0) message.tool_calls = toolCalls;
 
     const openaiResponse = {
       id: `chatcmpl-${Date.now()}`,
       object: "chat.completion",
       created: Math.floor(Date.now() / 1000),
       model: `clawrouter/${modelName}`,
-      choices: [{
-        index: 0,
-        message: { role: "assistant", content: textContent },
-        finish_reason: data.stop_reason === "end_turn" ? "stop" : (data.stop_reason ?? "stop"),
-      }],
+      choices: [{ index: 0, message, finish_reason: finishReason }],
       usage: {
         prompt_tokens: data.usage?.input_tokens ?? 0,
         completion_tokens: data.usage?.output_tokens ?? 0,
@@ -244,6 +348,18 @@ async function forwardToAnthropic(
   const decoder = new TextDecoder();
   let buffer = "";
   let insideThinking = false;
+  // Track tool_use streaming state
+  let currentBlockType: string | null = null;
+  let currentToolIndex = -1;
+  let stopReason: string | null = null;
+
+  const makeChunk = (delta: Record<string, unknown>, finish: string | null = null) => ({
+    id: `chatcmpl-${Date.now()}`,
+    object: "chat.completion.chunk",
+    created: Math.floor(Date.now() / 1000),
+    model: `clawrouter/${modelName}`,
+    choices: [{ index: 0, delta, finish_reason: finish }],
+  });
 
   try {
     while (true) {
@@ -263,52 +379,66 @@ async function forwardToAnthropic(
           const event = JSON.parse(jsonStr);
 
           if (event.type === "content_block_start") {
-            if (event.content_block?.type === "thinking") {
+            const block = event.content_block;
+            if (block?.type === "thinking") {
               insideThinking = true;
+              currentBlockType = "thinking";
+            } else if (block?.type === "tool_use") {
+              insideThinking = false;
+              currentBlockType = "tool_use";
+              currentToolIndex++;
+              // Emit first tool_calls chunk with id and function name
+              const chunk = makeChunk({
+                tool_calls: [{
+                  index: currentToolIndex,
+                  id: block.id,
+                  type: "function",
+                  function: { name: block.name, arguments: "" },
+                }],
+              });
+              res.write(`data: ${JSON.stringify(chunk)}\n\n`);
             } else {
               insideThinking = false;
+              currentBlockType = block?.type ?? "text";
             }
             continue;
           }
 
           if (event.type === "content_block_stop") {
             insideThinking = false;
+            currentBlockType = null;
             continue;
           }
 
           if (event.type === "content_block_delta") {
-            if (insideThinking) continue; // skip thinking deltas
+            if (insideThinking) continue;
 
+            // Handle tool_use argument streaming
+            if (currentBlockType === "tool_use" && event.delta?.type === "input_json_delta") {
+              const chunk = makeChunk({
+                tool_calls: [{
+                  index: currentToolIndex,
+                  function: { arguments: event.delta.partial_json ?? "" },
+                }],
+              });
+              res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+              continue;
+            }
+
+            // Regular text delta
             const text = event.delta?.text;
             if (text) {
-              const chunk = {
-                id: `chatcmpl-${Date.now()}`,
-                object: "chat.completion.chunk",
-                created: Math.floor(Date.now() / 1000),
-                model: `clawrouter/${modelName}`,
-                choices: [{
-                  index: 0,
-                  delta: { content: text },
-                  finish_reason: null,
-                }],
-              };
-              res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+              res.write(`data: ${JSON.stringify(makeChunk({ content: text }))}\n\n`);
             }
           }
 
+          if (event.type === "message_delta") {
+            stopReason = event.delta?.stop_reason ?? null;
+          }
+
           if (event.type === "message_stop") {
-            const finalChunk = {
-              id: `chatcmpl-${Date.now()}`,
-              object: "chat.completion.chunk",
-              created: Math.floor(Date.now() / 1000),
-              model: `clawrouter/${modelName}`,
-              choices: [{
-                index: 0,
-                delta: {},
-                finish_reason: "stop",
-              }],
-            };
-            res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
+            const finish = stopReason === "tool_use" ? "tool_calls" : "stop";
+            res.write(`data: ${JSON.stringify(makeChunk({}, finish))}\n\n`);
           }
         } catch {
           // skip unparseable lines
@@ -349,7 +479,7 @@ async function forwardToOpenAI(
   if (req.top_p !== undefined) body.top_p = req.top_p;
 
   const url = `${config.baseUrl}/chat/completions`;
-  logger.info(`→ ${provider}: ${modelName} (tier=${tier}, stream=${stream})`);
+  logger.info(`-> ${provider}: ${modelName} (tier=${tier}, stream=${stream})`);
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -370,10 +500,8 @@ async function forwardToOpenAI(
   }
 
   if (!stream) {
-    // Non-streaming: pass through with model name rewrite
     const data = await response.json() as Record<string, unknown>;
     if (data.model) data.model = `clawrouter/${modelName}`;
-
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(data));
     return;

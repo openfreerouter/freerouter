@@ -1,88 +1,19 @@
 {
-  "name": "@blockrun/clawrouter",
-  "version": "0.8.20",
-  "description": "Smart LLM router — save 78% on inference costs. 30+ models, one wallet, x402 micropayments.",
+  "name": "freerouter",
+  "version": "1.0.0",
+  "description": "Free, self-hosted AI model router — smart routing with your own API keys (OpenRouter alternative)",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "bin": {
-    "clawrouter": "./dist/cli.js"
-  },
-  "openclaw": {
-    "extensions": [
-      "./dist/index.js"
-    ]
-  },
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
-  },
-  "files": [
-    "dist",
-    "scripts",
-    "openclaw.plugin.json"
-  ],
+  "main": "src/index.ts",
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "start": "node dist/src/server.js",
+    "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src/",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "test:resilience:errors": "npx tsx test/resilience-errors.ts",
-    "test:resilience:stability": "DURATION_MINUTES=5 npx tsx test/resilience-stability.ts",
-    "test:resilience:stability:full": "DURATION_MINUTES=240 npx tsx test/resilience-stability.ts",
-    "test:resilience:lifecycle": "npx tsx test/resilience-lifecycle.ts",
-    "test:resilience:quick": "npm run test:resilience:errors && npm run test:resilience:lifecycle",
-    "test:resilience:full": "npm run test:resilience:errors && npm run test:resilience:lifecycle && npm run test:resilience:stability:full",
-    "test:e2e:tool-ids": "npx tsx test/e2e-tool-id-sanitization.ts"
+    "test": "npx tsx test/test-router.ts"
   },
-  "keywords": [
-    "llm",
-    "router",
-    "smart-routing",
-    "ai",
-    "openclaw",
-    "blockrun",
-    "x402",
-    "usdc",
-    "cost-optimization",
-    "openai",
-    "anthropic",
-    "gemini",
-    "deepseek",
-    "usdc-hackathon-winner",
-    "agentic-commerce"
-  ],
-  "author": "BlockRun <hello@blockrun.ai>",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/BlockRunAI/ClawRouter.git"
-  },
-  "dependencies": {
-    "viem": "^2.39.3"
-  },
-  "peerDependencies": {
-    "openclaw": ">=2025.1.0"
-  },
-  "peerDependenciesMeta": {
-    "openclaw": {
-      "optional": true
-    }
-  },
   "devDependencies": {
-    "@eslint/js": "^9.39.2",
-    "eslint": "^9.39.2",
-    "openclaw": "latest",
-    "prettier": "^3.8.1",
-    "tsup": "^8.0.0",
-    "typescript": "^5.7.0",
-    "typescript-eslint": "^8.54.0"
-  },
-  "engines": {
-    "node": ">=20"
+    "@types/node": "^25.2.3",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
   }
 }
